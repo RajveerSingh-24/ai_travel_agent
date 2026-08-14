@@ -56,6 +56,7 @@ class TestTravelPlanEndpoint:
         assert response_data["missing_fields"] == []
         assert response_data["clarification_message"] is None
         assert len(response_data["recommendations"]) == 3
+        assert response_data["pending_approval"] is None
         mock_llm_service.parse_travel_request.assert_called_once_with("Plan a Paris trip")
 
     def test_retains_and_merges_constraints_for_a_session(self, client_and_llm_service):
@@ -163,3 +164,134 @@ class TestTravelPlanEndpoint:
         assert response.status_code == 200
         assert response.json()["is_complete"] is True
         assert response.json()["recommendations"] == []
+
+
+class TestTravelApprovalEndpoint:
+    """Tests for resolving in-memory travel recommendation approvals."""
+
+    def test_approves_valid_pending_approval(self, client_and_llm_service):
+        client, _, main = client_and_llm_service
+        pending = main.travel_approval_service.create_pending_approval(
+            "session-1",
+            ["flight-1", "hotel-1"],
+        )
+
+        response = client.post(
+            "/api/travel/approval",
+            json={
+                "session_id": "session-1",
+                "approval_id": pending.approval_id,
+                "action": "approve",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["approval"]["status"] == "approved"
+
+    def test_rejects_valid_pending_approval(self, client_and_llm_service):
+        client, _, main = client_and_llm_service
+        pending = main.travel_approval_service.create_pending_approval(
+            "session-1",
+            ["flight-1", "hotel-1"],
+        )
+
+        response = client.post(
+            "/api/travel/approval",
+            json={
+                "session_id": "session-1",
+                "approval_id": pending.approval_id,
+                "action": "reject",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["approval"]["status"] == "rejected"
+
+    def test_returns_not_found_for_unknown_approval(self, client_and_llm_service):
+        client, _, _ = client_and_llm_service
+
+        response = client.post(
+            "/api/travel/approval",
+            json={
+                "session_id": "session-1",
+                "approval_id": "missing-approval",
+                "action": "approve",
+            },
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Unknown approval ID"
+
+    def test_returns_forbidden_for_wrong_session(self, client_and_llm_service):
+        client, _, main = client_and_llm_service
+        pending = main.travel_approval_service.create_pending_approval(
+            "session-1",
+            ["flight-1", "hotel-1"],
+        )
+
+        response = client.post(
+            "/api/travel/approval",
+            json={
+                "session_id": "session-2",
+                "approval_id": pending.approval_id,
+                "action": "approve",
+            },
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Approval does not belong to this session"
+
+    def test_returns_conflict_for_already_resolved_approval(
+        self, client_and_llm_service
+    ):
+        client, _, main = client_and_llm_service
+        pending = main.travel_approval_service.create_pending_approval(
+            "session-1",
+            ["flight-1", "hotel-1"],
+        )
+        main.travel_approval_service.approve("session-1", pending.approval_id)
+
+        response = client.post(
+            "/api/travel/approval",
+            json={
+                "session_id": "session-1",
+                "approval_id": pending.approval_id,
+                "action": "reject",
+            },
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Approval has already been resolved"
+
+    def test_completed_plan_creates_pending_approval_for_selected_recommendation(
+        self, client_and_llm_service
+    ):
+        client, mock_llm_service, _ = client_and_llm_service
+        mock_llm_service.parse_travel_request.return_value = TravelConstraints(
+            origin="New York",
+            destination="Paris",
+            departure_date="2026-09-01",
+            return_date="2026-09-08",
+            travellers=2,
+        )
+
+        response = client.post(
+            "/api/travel/plan",
+            json={
+                "session_id": "session-7",
+                "message": "Plan my trip",
+                "selected_recommendation_ids": [
+                    "mock-flight-001",
+                    "mock-hotel-001",
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        approval = response.json()["pending_approval"]
+        assert approval["session_id"] == "session-7"
+        assert approval["selected_recommendation_ids"] == [
+            "mock-flight-001",
+            "mock-hotel-001",
+        ]
+        assert approval["status"] == "pending"

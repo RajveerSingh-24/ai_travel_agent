@@ -8,8 +8,14 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 from schemas.travel import TravelConstraints
-from schemas.api import TravelPlanRequest, TravelPlanResponse
+from schemas.api import (
+    TravelApprovalRequest,
+    TravelApprovalResponse,
+    TravelPlanRequest,
+    TravelPlanResponse,
+)
 from services.llm_service import LLMService
+from services.approval_service import TravelApprovalService
 from services.providers.mock_flight_provider import MockFlightProvider
 from services.providers.mock_hotel_provider import MockHotelProvider
 from services.recommendation_service import TravelRecommendationService
@@ -71,6 +77,7 @@ travel_search_service = TravelSearchService(
     MockHotelProvider(),
 )
 travel_recommendation_service = TravelRecommendationService()
+travel_approval_service = TravelApprovalService()
 
 
 @app.get("/health")
@@ -126,9 +133,9 @@ async def plan_travel(request: TravelPlanRequest):
             request.message,
             existing_constraints,
         )
-        session_constraints[request.session_id] = result.constraints
 
         recommendations = None
+        pending_approval = None
         if result.validation.is_complete:
             search_results = travel_search_service.search(result.constraints)
             recommendations = travel_recommendation_service.recommend(
@@ -136,6 +143,23 @@ async def plan_travel(request: TravelPlanRequest):
                 search_results.flights,
                 search_results.hotels,
             )
+            if request.selected_recommendation_ids:
+                selected_ids = set(request.selected_recommendation_ids)
+                is_selected_recommendation = any(
+                    selected_ids
+                    == {recommendation.flight.id, recommendation.hotel.id}
+                    for recommendation in recommendations
+                )
+                if not is_selected_recommendation:
+                    raise ValueError("Selected recommendation is not available")
+                pending_approval = travel_approval_service.create_pending_approval(
+                    request.session_id,
+                    request.selected_recommendation_ids,
+                )
+        elif request.selected_recommendation_ids:
+            raise ValueError("A recommendation can only be selected for a complete plan")
+
+        session_constraints[request.session_id] = result.constraints
 
         return TravelPlanResponse(
             session_id=request.session_id,
@@ -144,6 +168,7 @@ async def plan_travel(request: TravelPlanRequest):
             missing_fields=result.validation.missing_fields,
             clarification_message=result.clarification_message,
             recommendations=recommendations,
+            pending_approval=pending_approval,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -152,6 +177,31 @@ async def plan_travel(request: TravelPlanRequest):
             status_code=500,
             detail=f"Unexpected error while planning travel: {str(e)}",
         )
+
+
+@app.post("/api/travel/approval", response_model=TravelApprovalResponse)
+async def resolve_travel_approval(request: TravelApprovalRequest):
+    """Approve or reject a pending travel recommendation approval."""
+    try:
+        if request.action == "approve":
+            approval = travel_approval_service.approve(
+                request.session_id,
+                request.approval_id,
+            )
+        else:
+            approval = travel_approval_service.reject(
+                request.session_id,
+                request.approval_id,
+            )
+        return TravelApprovalResponse(approval=approval)
+    except ValueError as e:
+        error_message = str(e)
+        status_code = {
+            "Unknown approval ID": 404,
+            "Approval does not belong to this session": 403,
+            "Approval has already been resolved": 409,
+        }.get(error_message, 400)
+        raise HTTPException(status_code=status_code, detail=error_message)
 
 
 if __name__ == "__main__":
