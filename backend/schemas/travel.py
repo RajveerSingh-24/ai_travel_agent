@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import date
 from typing import Optional
 
@@ -35,8 +35,8 @@ class TravelConstraints(BaseModel):
         None, description="Minimum hotel star rating (1-5)"
     )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "origin": "New York",
                 "destination": "Paris",
@@ -50,3 +50,4 @@ class TravelConstraints(BaseModel):
                 "hotel_rating": 4.0,
             }
         }
+    )
