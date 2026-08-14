@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 from schemas.travel import TravelConstraints
+from schemas.api import TravelPlanRequest, TravelPlanResponse
 from services.llm_service import LLMService
+from services.travel_orchestrator import TravelOrchestrator
 
 app = FastAPI(title="AI Travel Agent Backend")
 
@@ -48,6 +50,18 @@ except ValueError as e:
     llm_error = str(e)
 
 
+# Initialize the session-aware travel planning service.
+try:
+    travel_orchestrator = TravelOrchestrator()
+except ValueError as e:
+    travel_orchestrator = None
+    travel_orchestrator_error = str(e)
+
+
+# Process-local state for the prototype's travel-planning sessions.
+session_constraints: dict[str, TravelConstraints] = {}
+
+
 @app.get("/health")
 async def health():
     """Health check endpoint."""
@@ -83,6 +97,39 @@ async def parse_travel_request(request: TravelParseRequest):
         raise HTTPException(
             status_code=500,
             detail=f"Unexpected error while parsing travel request: {str(e)}",
+        )
+
+
+@app.post("/api/travel/plan", response_model=TravelPlanResponse)
+async def plan_travel(request: TravelPlanRequest):
+    """Process a travel-planning message while retaining session constraints."""
+    if not travel_orchestrator:
+        raise HTTPException(
+            status_code=503,
+            detail="Travel orchestrator unavailable: " + travel_orchestrator_error,
+        )
+
+    try:
+        existing_constraints = session_constraints.get(request.session_id)
+        result = travel_orchestrator.process_message(
+            request.message,
+            existing_constraints,
+        )
+        session_constraints[request.session_id] = result.constraints
+
+        return TravelPlanResponse(
+            session_id=request.session_id,
+            constraints=result.constraints,
+            is_complete=result.validation.is_complete,
+            missing_fields=result.validation.missing_fields,
+            clarification_message=result.clarification_message,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error while planning travel: {str(e)}",
         )
 
 
