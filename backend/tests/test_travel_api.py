@@ -26,6 +26,7 @@ def client_and_llm_service(monkeypatch):
 
         main = importlib.reload(main)
         main.session_constraints.clear()
+        main.session_recommendations.clear()
 
         with TestClient(main.app) as client:
             yield client, mock_llm_service_class.return_value, main
@@ -295,3 +296,134 @@ class TestTravelApprovalEndpoint:
             "mock-hotel-001",
         ]
         assert approval["status"] == "pending"
+
+
+class TestTravelBookingEndpoint:
+    """Tests for booking approved in-memory travel recommendations."""
+
+    @staticmethod
+    def create_pending_approval(client, mock_llm_service):
+        mock_llm_service.parse_travel_request.return_value = TravelConstraints(
+            origin="New York",
+            destination="Paris",
+            departure_date="2026-09-01",
+            return_date="2026-09-08",
+            travellers=2,
+        )
+        response = client.post(
+            "/api/travel/plan",
+            json={
+                "session_id": "booking-session",
+                "message": "Plan my trip",
+                "selected_recommendation_ids": [
+                    "mock-flight-001",
+                    "mock-hotel-001",
+                ],
+            },
+        )
+        assert response.status_code == 200
+        return response.json()["pending_approval"]["approval_id"]
+
+    @staticmethod
+    def approve(client, approval_id):
+        response = client.post(
+            "/api/travel/approval",
+            json={
+                "session_id": "booking-session",
+                "approval_id": approval_id,
+                "action": "approve",
+            },
+        )
+        assert response.status_code == 200
+
+    def test_books_an_approved_recommendation(self, client_and_llm_service):
+        client, mock_llm_service, _ = client_and_llm_service
+        approval_id = self.create_pending_approval(client, mock_llm_service)
+        self.approve(client, approval_id)
+
+        response = client.post(
+            "/api/travel/book",
+            json={"session_id": "booking-session", "approval_id": approval_id},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["booking"]["status"] == "confirmed"
+        assert response.json()["booking"]["selected_flight_id"] == "mock-flight-001"
+        assert response.json()["booking"]["selected_hotel_id"] == "mock-hotel-001"
+
+    def test_rejects_booking_for_pending_approval(self, client_and_llm_service):
+        client, mock_llm_service, _ = client_and_llm_service
+        approval_id = self.create_pending_approval(client, mock_llm_service)
+
+        response = client.post(
+            "/api/travel/book",
+            json={"session_id": "booking-session", "approval_id": approval_id},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Approval is still pending"
+
+    def test_rejects_booking_for_rejected_approval(self, client_and_llm_service):
+        client, mock_llm_service, _ = client_and_llm_service
+        approval_id = self.create_pending_approval(client, mock_llm_service)
+        response = client.post(
+            "/api/travel/approval",
+            json={
+                "session_id": "booking-session",
+                "approval_id": approval_id,
+                "action": "reject",
+            },
+        )
+        assert response.status_code == 200
+
+        response = client.post(
+            "/api/travel/book",
+            json={"session_id": "booking-session", "approval_id": approval_id},
+        )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "Approval was rejected"
+
+    def test_returns_not_found_for_unknown_booking_approval(
+        self, client_and_llm_service
+    ):
+        client, _, _ = client_and_llm_service
+
+        response = client.post(
+            "/api/travel/book",
+            json={"session_id": "booking-session", "approval_id": "missing"},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Unknown approval ID"
+
+    def test_returns_forbidden_for_booking_with_wrong_session(
+        self, client_and_llm_service
+    ):
+        client, mock_llm_service, _ = client_and_llm_service
+        approval_id = self.create_pending_approval(client, mock_llm_service)
+        self.approve(client, approval_id)
+
+        response = client.post(
+            "/api/travel/book",
+            json={"session_id": "other-session", "approval_id": approval_id},
+        )
+
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Approval does not belong to this session"
+
+    def test_returns_provider_booking_failure(self, client_and_llm_service):
+        client, mock_llm_service, main = client_and_llm_service
+        approval_id = self.create_pending_approval(client, mock_llm_service)
+        self.approve(client, approval_id)
+        main.session_constraints["booking-session"] = main.session_constraints[
+            "booking-session"
+        ].model_copy(update={"budget": 1.0})
+
+        response = client.post(
+            "/api/travel/book",
+            json={"session_id": "booking-session", "approval_id": approval_id},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["booking"]["status"] == "failed"

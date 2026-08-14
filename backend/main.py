@@ -11,14 +11,21 @@ from schemas.travel import TravelConstraints
 from schemas.api import (
     TravelApprovalRequest,
     TravelApprovalResponse,
+    TravelBookingRequest,
+    TravelBookingResponse,
     TravelPlanRequest,
     TravelPlanResponse,
 )
 from services.llm_service import LLMService
 from services.approval_service import TravelApprovalService
+from services.booking_service import BookingService
+from services.providers.mock_booking_provider import MockBookingProvider
 from services.providers.mock_flight_provider import MockFlightProvider
 from services.providers.mock_hotel_provider import MockHotelProvider
-from services.recommendation_service import TravelRecommendationService
+from services.recommendation_service import (
+    TravelRecommendation,
+    TravelRecommendationService,
+)
 from services.search_service import TravelSearchService
 from services.travel_orchestrator import TravelOrchestrator
 
@@ -70,6 +77,7 @@ except ValueError as e:
 
 # Process-local state for the prototype's travel-planning sessions.
 session_constraints: dict[str, TravelConstraints] = {}
+session_recommendations: dict[str, list[TravelRecommendation]] = {}
 
 # Offline search and recommendation services for the prototype.
 travel_search_service = TravelSearchService(
@@ -78,6 +86,7 @@ travel_search_service = TravelSearchService(
 )
 travel_recommendation_service = TravelRecommendationService()
 travel_approval_service = TravelApprovalService()
+booking_service = BookingService(MockBookingProvider())
 
 
 @app.get("/health")
@@ -160,6 +169,8 @@ async def plan_travel(request: TravelPlanRequest):
             raise ValueError("A recommendation can only be selected for a complete plan")
 
         session_constraints[request.session_id] = result.constraints
+        if recommendations is not None:
+            session_recommendations[request.session_id] = recommendations
 
         return TravelPlanResponse(
             session_id=request.session_id,
@@ -179,6 +190,19 @@ async def plan_travel(request: TravelPlanRequest):
         )
 
 
+def approval_http_error(error: ValueError) -> HTTPException:
+    """Map approval service errors to HTTP responses."""
+    error_message = str(error)
+    status_code = {
+        "Unknown approval ID": 404,
+        "Approval does not belong to this session": 403,
+        "Approval has already been resolved": 409,
+        "Approval is still pending": 409,
+        "Approval was rejected": 409,
+    }.get(error_message, 400)
+    return HTTPException(status_code=status_code, detail=error_message)
+
+
 @app.post("/api/travel/approval", response_model=TravelApprovalResponse)
 async def resolve_travel_approval(request: TravelApprovalRequest):
     """Approve or reject a pending travel recommendation approval."""
@@ -195,13 +219,50 @@ async def resolve_travel_approval(request: TravelApprovalRequest):
             )
         return TravelApprovalResponse(approval=approval)
     except ValueError as e:
-        error_message = str(e)
-        status_code = {
-            "Unknown approval ID": 404,
-            "Approval does not belong to this session": 403,
-            "Approval has already been resolved": 409,
-        }.get(error_message, 400)
-        raise HTTPException(status_code=status_code, detail=error_message)
+        raise approval_http_error(e)
+
+
+@app.post("/api/travel/book", response_model=TravelBookingResponse)
+async def book_travel(request: TravelBookingRequest):
+    """Book the approved flight and hotel selection for a travel session."""
+    try:
+        approval = travel_approval_service.get_approved(
+            request.session_id,
+            request.approval_id,
+        )
+        recommendations = session_recommendations.get(request.session_id, [])
+        selected_ids = set(approval.selected_recommendation_ids)
+        recommendation = next(
+            (
+                recommendation
+                for recommendation in recommendations
+                if selected_ids
+                == {recommendation.flight.id, recommendation.hotel.id}
+            ),
+            None,
+        )
+        constraints = session_constraints.get(request.session_id)
+        if recommendation is None or constraints is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Approved recommendation is not available for this session",
+            )
+
+        booking = booking_service.book(
+            recommendation.flight,
+            recommendation.hotel,
+            constraints,
+        )
+        return TravelBookingResponse(booking=booking)
+    except ValueError as e:
+        raise approval_http_error(e)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error while booking travel: {str(e)}",
+        )
 
 
 if __name__ == "__main__":

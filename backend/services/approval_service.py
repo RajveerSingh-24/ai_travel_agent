@@ -31,20 +31,33 @@ class TravelApprovalService:
         """Reject a pending approval belonging to the supplied session."""
         return self._resolve(session_id, approval_id, ApprovalStatus.REJECTED)
 
+    def get_approved(self, session_id: str, approval_id: str) -> TravelApproval:
+        """Return an approved approval belonging to the supplied session."""
+        approval = self._get(session_id, approval_id)
+        if approval.status is ApprovalStatus.PENDING:
+            raise ValueError("Approval is still pending")
+        if approval.status is ApprovalStatus.REJECTED:
+            raise ValueError("Approval was rejected")
+        return approval
+
     def _resolve(
         self,
         session_id: str,
         approval_id: str,
         status: ApprovalStatus,
     ) -> TravelApproval:
-        approval = self._approvals.get(approval_id)
-        if approval is None:
-            raise ValueError("Unknown approval ID")
-        if approval.session_id != session_id:
-            raise ValueError("Approval does not belong to this session")
+        approval = self._get(session_id, approval_id)
         if approval.status is not ApprovalStatus.PENDING:
             raise ValueError("Approval has already been resolved")
 
         resolved_approval = approval.model_copy(update={"status": status})
         self._approvals[approval_id] = resolved_approval
         return resolved_approval
+
+    def _get(self, session_id: str, approval_id: str) -> TravelApproval:
+        approval = self._approvals.get(approval_id)
+        if approval is None:
+            raise ValueError("Unknown approval ID")
+        if approval.session_id != session_id:
+            raise ValueError("Approval does not belong to this session")
+        return approval

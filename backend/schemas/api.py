@@ -3,6 +3,7 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 from schemas.approval import TravelApproval
+from schemas.booking import BookingResult
 from schemas.travel import TravelConstraints
 from services.recommendation_service import TravelRecommendation
 
@@ -53,3 +54,16 @@ class TravelApprovalResponse(BaseModel):
     """Response model containing the resolved travel approval state."""
 
     approval: TravelApproval
+
+
+class TravelBookingRequest(BaseModel):
+    """Request model for booking an approved travel recommendation."""
+
+    session_id: str = Field(..., min_length=1)
+    approval_id: str = Field(..., min_length=1)
+
+
+class TravelBookingResponse(BaseModel):
+    """Response model containing the result of a travel booking attempt."""
+
+    booking: BookingResult
