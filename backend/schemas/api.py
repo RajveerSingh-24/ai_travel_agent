@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from schemas.travel import TravelConstraints
+from services.recommendation_service import TravelRecommendation
 
 
 class TravelPlanRequest(BaseModel):
@@ -30,3 +31,4 @@ class TravelPlanResponse(BaseModel):
     is_complete: bool
     missing_fields: list[str]
     clarification_message: Optional[str]
+    recommendations: Optional[list[TravelRecommendation]] = None

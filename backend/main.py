@@ -10,6 +10,10 @@ load_dotenv()
 from schemas.travel import TravelConstraints
 from schemas.api import TravelPlanRequest, TravelPlanResponse
 from services.llm_service import LLMService
+from services.providers.mock_flight_provider import MockFlightProvider
+from services.providers.mock_hotel_provider import MockHotelProvider
+from services.recommendation_service import TravelRecommendationService
+from services.search_service import TravelSearchService
 from services.travel_orchestrator import TravelOrchestrator
 
 app = FastAPI(title="AI Travel Agent Backend")
@@ -60,6 +64,13 @@ except ValueError as e:
 
 # Process-local state for the prototype's travel-planning sessions.
 session_constraints: dict[str, TravelConstraints] = {}
+
+# Offline search and recommendation services for the prototype.
+travel_search_service = TravelSearchService(
+    MockFlightProvider(),
+    MockHotelProvider(),
+)
+travel_recommendation_service = TravelRecommendationService()
 
 
 @app.get("/health")
@@ -117,12 +128,22 @@ async def plan_travel(request: TravelPlanRequest):
         )
         session_constraints[request.session_id] = result.constraints
 
+        recommendations = None
+        if result.validation.is_complete:
+            search_results = travel_search_service.search(result.constraints)
+            recommendations = travel_recommendation_service.recommend(
+                result.constraints,
+                search_results.flights,
+                search_results.hotels,
+            )
+
         return TravelPlanResponse(
             session_id=request.session_id,
             constraints=result.constraints,
             is_complete=result.validation.is_complete,
             missing_fields=result.validation.missing_fields,
             clarification_message=result.clarification_message,
+            recommendations=recommendations,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
