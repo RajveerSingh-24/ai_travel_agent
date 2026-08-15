@@ -22,7 +22,10 @@ def client_and_llm_service(monkeypatch):
 
     monkeypatch.setattr(httpx.Client, "__init__", compatible_client_init)
 
-    with patch("services.travel_orchestrator.LLMService") as mock_llm_service_class:
+    with patch("services.travel_orchestrator.LLMService") as mock_llm_service_class, \
+         patch("services.langgraph_orchestrator.LLMService") as mock_lg_llm_service_class:
+        mock_lg_llm_service_class.return_value = mock_llm_service_class.return_value
+
         import main
 
         main = importlib.reload(main)
@@ -423,9 +426,10 @@ class TestTravelBookingEndpoint:
         client, mock_llm_service, main = client_and_llm_service
         approval_id = self.create_pending_approval(client, mock_llm_service)
         self.approve(client, approval_id)
-        main.session_constraints["booking-session"] = main.session_constraints[
-            "booking-session"
-        ].model_copy(update={"budget": 1.0})
+        main.langgraph_orchestrator.graph.update_state(
+            {"configurable": {"thread_id": "booking-session"}},
+            {"constraints": main.langgraph_orchestrator.get_constraints("booking-session").model_copy(update={"budget": 1.0})},
+        )
 
         response = client.post(
             "/api/travel/book",
@@ -471,9 +475,10 @@ class TestTravelBookingEndpoint:
         client, mock_llm_service, main = client_and_llm_service
         approval_id = self.create_pending_approval(client, mock_llm_service)
         self.approve(client, approval_id)
-        main.session_constraints["booking-session"] = main.session_constraints[
-            "booking-session"
-        ].model_copy(update={"budget": 1.0})
+        main.langgraph_orchestrator.graph.update_state(
+            {"configurable": {"thread_id": "booking-session"}},
+            {"constraints": main.langgraph_orchestrator.get_constraints("booking-session").model_copy(update={"budget": 1.0})},
+        )
 
         first_response = client.post(
             "/api/travel/book",

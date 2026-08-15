@@ -1,12 +1,14 @@
 from schemas.travel import TravelConstraints
 
 
-class ValidationResult:
+from pydantic import BaseModel
+
+
+class ValidationResult(BaseModel):
     """Result of constraint validation."""
 
-    def __init__(self, is_complete: bool, missing_fields: list[str]):
-        self.is_complete = is_complete
-        self.missing_fields = missing_fields
+    is_complete: bool
+    missing_fields: list[str]
 
     def to_dict(self):
         """Convert to dictionary."""

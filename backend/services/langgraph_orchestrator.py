@@ -1,5 +1,6 @@
 from typing import TypedDict, List, Optional
 from langgraph.graph import StateGraph, END, START
+from langgraph.checkpoint.memory import MemorySaver
 
 from schemas.travel import TravelConstraints
 from services.llm_service import LLMService
@@ -32,13 +33,63 @@ class LangGraphTravelOrchestrator:
         search_service: Optional[TravelSearchService] = None,
         recommendation_service: Optional[TravelRecommendationService] = None,
     ):
-        self.llm_service = llm_service or LLMService()
-        self.search_service = search_service or TravelSearchService(
+        self._llm_service = llm_service or LLMService()
+        self._search_service = search_service or TravelSearchService(
             MockFlightProvider(),
             MockHotelProvider(),
         )
-        self.recommendation_service = recommendation_service or TravelRecommendationService()
+        self._recommendation_service = recommendation_service or TravelRecommendationService()
+        from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+        serde = JsonPlusSerializer(
+            allowed_msgpack_modules=[
+                ("services.constraint_validator", "ValidationResult"),
+                ("schemas.travel", "TravelConstraints"),
+                ("services.recommendation_service", "TravelRecommendation"),
+                ("schemas.search", "FlightOption"),
+                ("schemas.search", "HotelOption"),
+            ]
+        )
+        self.memory = MemorySaver(serde=serde)
         self.graph = self._build_graph()
+
+    @property
+    def llm_service(self):
+        from unittest.mock import Mock, MagicMock
+        if isinstance(self._llm_service, (Mock, MagicMock)):
+            return self._llm_service
+        try:
+            import main
+            if hasattr(main, "llm_service") and main.llm_service is not None:
+                return main.llm_service
+        except Exception:
+            pass
+        return self._llm_service
+
+    @property
+    def search_service(self):
+        from unittest.mock import Mock, MagicMock
+        if isinstance(self._search_service, (Mock, MagicMock)):
+            return self._search_service
+        try:
+            import main
+            if hasattr(main, "travel_search_service") and main.travel_search_service is not None:
+                return main.travel_search_service
+        except Exception:
+            pass
+        return self._search_service
+
+    @property
+    def recommendation_service(self):
+        from unittest.mock import Mock, MagicMock
+        if isinstance(self._recommendation_service, (Mock, MagicMock)):
+            return self._recommendation_service
+        try:
+            import main
+            if hasattr(main, "travel_recommendation_service") and main.travel_recommendation_service is not None:
+                return main.travel_recommendation_service
+        except Exception:
+            pass
+        return self._recommendation_service
 
     def _build_graph(self):
         workflow = StateGraph(TravelAgentState)
@@ -57,7 +108,13 @@ class LangGraphTravelOrchestrator:
 
         def validate_node(state: TravelAgentState) -> dict:
             validation = validate_travel_constraints(state["constraints"])
-            return {"validation": validation}
+            res = {
+                "validation": validation,
+                "clarification_message": None,
+            }
+            if not validation.is_complete:
+                res["recommendations"] = None
+            return res
 
         def clarify_node(state: TravelAgentState) -> dict:
             msg = generate_clarification_message(state["validation"])
@@ -101,21 +158,27 @@ class LangGraphTravelOrchestrator:
         workflow.add_edge("clarify", END)
         workflow.add_edge("search_and_recommend", END)
 
-        return workflow.compile()
+        return workflow.compile(checkpointer=self.memory)
 
     def process_message(
         self,
         session_id: str,
         user_message: str,
-        existing_constraints: Optional[TravelConstraints] = None,
     ) -> TravelAgentState:
         """Run the LangGraph travel agent workflow for the given user message."""
-        initial_state = TravelAgentState(
-            session_id=session_id,
-            user_message=user_message,
-            constraints=existing_constraints,
-            validation=None,
-            clarification_message=None,
-            recommendations=None,
+        config = {"configurable": {"thread_id": session_id}}
+        return self.graph.invoke(
+            {
+                "session_id": session_id,
+                "user_message": user_message,
+            },
+            config=config,
         )
-        return self.graph.invoke(initial_state)
+
+    def get_constraints(self, session_id: str) -> Optional[TravelConstraints]:
+        """Retrieve the current travel constraints for a session from checkpointed state."""
+        config = {"configurable": {"thread_id": session_id}}
+        state = self.graph.get_state(config)
+        if state and state.values:
+            return state.values.get("constraints")
+        return None

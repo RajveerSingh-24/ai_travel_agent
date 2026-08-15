@@ -32,11 +32,11 @@ class TestLangGraphTravelOrchestrator:
         )
 
         # Check assertions
-        assert state["session_id"] == "session-1"
-        assert state["validation"].is_complete is False
-        assert state["validation"].missing_fields == ["return_date or duration_days"]
-        assert state["clarification_message"] == "How many days would you like to stay?"
-        assert state["recommendations"] is None
+        assert state.get("session_id") == "session-1"
+        assert state.get("validation").is_complete is False
+        assert state.get("validation").missing_fields == ["return_date or duration_days"]
+        assert state.get("clarification_message") == "How many days would you like to stay?"
+        assert state.get("recommendations") is None
 
     def test_complete_constraints_run_search_and_recommendations(self, mock_llm_service):
         mock_llm_service.parse_travel_request.return_value = TravelConstraints(
@@ -55,15 +55,15 @@ class TestLangGraphTravelOrchestrator:
         )
 
         # Check assertions
-        assert state["session_id"] == "session-2"
-        assert state["validation"].is_complete is True
-        assert state["validation"].missing_fields == []
-        assert state["clarification_message"] is None
-        assert state["recommendations"] is not None
-        assert len(state["recommendations"]) == 3
+        assert state.get("session_id") == "session-2"
+        assert state.get("validation").is_complete is True
+        assert state.get("validation").missing_fields == []
+        assert state.get("clarification_message") is None
+        assert state.get("recommendations") is not None
+        assert len(state.get("recommendations")) == 3
         # First option should be the best option
-        assert state["recommendations"][0].flight is not None
-        assert state["recommendations"][0].hotel is not None
+        assert state.get("recommendations")[0].flight is not None
+        assert state.get("recommendations")[0].hotel is not None
 
     def test_existing_and_new_constraints_are_merged(self, mock_llm_service):
         existing = TravelConstraints(origin="New York", travellers=2)
@@ -74,20 +74,23 @@ class TestLangGraphTravelOrchestrator:
         )
         orchestrator = LangGraphTravelOrchestrator()
 
-        # Invoke orchestrator with existing constraints
+        # Pre-seed existing constraints in checkpointer
+        config = {"configurable": {"thread_id": "session-3"}}
+        orchestrator.graph.update_state(config, {"constraints": existing})
+
+        # Invoke orchestrator
         state = orchestrator.process_message(
             session_id="session-3",
             user_message="Paris for a week on September 1",
-            existing_constraints=existing,
         )
 
-        assert state["constraints"].origin == "New York"
-        assert state["constraints"].destination == "Paris"
-        assert state["constraints"].departure_date == date(2026, 9, 1)
-        assert state["constraints"].duration_days == 7
-        assert state["constraints"].travellers == 2
-        assert state["validation"].is_complete is True
-        assert state["recommendations"] is not None
+        assert state.get("constraints").origin == "New York"
+        assert state.get("constraints").destination == "Paris"
+        assert state.get("constraints").departure_date == date(2026, 9, 1)
+        assert state.get("constraints").duration_days == 7
+        assert state.get("constraints").travellers == 2
+        assert state.get("validation").is_complete is True
+        assert state.get("recommendations") is not None
 
     def test_recommendations_under_budget_are_filtered(self, mock_llm_service):
         # Setting a low budget to ensure we filter out expensive recommendations if any
@@ -106,7 +109,7 @@ class TestLangGraphTravelOrchestrator:
             user_message="Plan a budget trip under $1500",
         )
 
-        assert state["validation"].is_complete is True
-        assert state["recommendations"] is not None
-        for rec in state["recommendations"]:
+        assert state.get("validation").is_complete is True
+        assert state.get("recommendations") is not None
+        for rec in state.get("recommendations"):
             assert rec.total_price <= 1500.0

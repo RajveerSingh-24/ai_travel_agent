@@ -28,6 +28,7 @@ from services.recommendation_service import (
 )
 from services.search_service import TravelSearchService
 from services.travel_orchestrator import TravelOrchestrator
+from services.langgraph_orchestrator import LangGraphTravelOrchestrator
 
 app = FastAPI(title="AI Travel Agent Backend")
 
@@ -73,6 +74,14 @@ try:
 except ValueError as e:
     travel_orchestrator = None
     travel_orchestrator_error = str(e)
+
+
+# Initialize the LangGraph travel orchestrator service.
+try:
+    langgraph_orchestrator = LangGraphTravelOrchestrator()
+except ValueError as e:
+    langgraph_orchestrator = None
+    langgraph_orchestrator_error = str(e)
 
 
 # Process-local state for the prototype's travel-planning sessions.
@@ -130,34 +139,35 @@ async def parse_travel_request(request: TravelParseRequest):
 @app.post("/api/travel/plan", response_model=TravelPlanResponse)
 async def plan_travel(request: TravelPlanRequest):
     """Process a travel-planning message while retaining session constraints."""
-    if not travel_orchestrator:
+    if not langgraph_orchestrator:
         raise HTTPException(
             status_code=503,
-            detail="Travel orchestrator unavailable: " + travel_orchestrator_error,
+            detail="LangGraph travel orchestrator unavailable: " + langgraph_orchestrator_error,
         )
 
     try:
-        existing_constraints = session_constraints.get(request.session_id)
-        result = travel_orchestrator.process_message(
+        # Run the LangGraph workflow
+        state = langgraph_orchestrator.process_message(
+            request.session_id,
             request.message,
-            existing_constraints,
         )
 
-        recommendations = None
+        constraints = state.get("constraints")
+        validation = state.get("validation")
+        clarification_message = state.get("clarification_message")
+        recommendations = state.get("recommendations")
+
+        is_complete = validation.is_complete if validation else False
+        missing_fields = validation.missing_fields if validation else []
+
         pending_approval = None
-        if result.validation.is_complete:
-            search_results = travel_search_service.search(result.constraints)
-            recommendations = travel_recommendation_service.recommend(
-                result.constraints,
-                search_results.flights,
-                search_results.hotels,
-            )
+        if is_complete:
             if request.selected_recommendation_ids:
                 selected_ids = set(request.selected_recommendation_ids)
                 is_selected_recommendation = any(
                     selected_ids
                     == {recommendation.flight.id, recommendation.hotel.id}
-                    for recommendation in recommendations
+                    for recommendation in (recommendations or [])
                 )
                 if not is_selected_recommendation:
                     raise ValueError("Selected recommendation is not available")
@@ -168,16 +178,15 @@ async def plan_travel(request: TravelPlanRequest):
         elif request.selected_recommendation_ids:
             raise ValueError("A recommendation can only be selected for a complete plan")
 
-        session_constraints[request.session_id] = result.constraints
         if recommendations is not None:
             session_recommendations[request.session_id] = recommendations
 
         return TravelPlanResponse(
             session_id=request.session_id,
-            constraints=result.constraints,
-            is_complete=result.validation.is_complete,
-            missing_fields=result.validation.missing_fields,
-            clarification_message=result.clarification_message,
+            constraints=constraints,
+            is_complete=is_complete,
+            missing_fields=missing_fields,
+            clarification_message=clarification_message,
             recommendations=recommendations,
             pending_approval=pending_approval,
         )
@@ -241,7 +250,7 @@ async def book_travel(request: TravelBookingRequest):
             ),
             None,
         )
-        constraints = session_constraints.get(request.session_id)
+        constraints = langgraph_orchestrator.get_constraints(request.session_id)
         if recommendation is None or constraints is None:
             raise HTTPException(
                 status_code=404,
