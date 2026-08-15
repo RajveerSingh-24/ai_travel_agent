@@ -9,12 +9,20 @@ class BookingService:
 
     def __init__(self, booking_provider: BookingProvider):
         self.booking_provider = booking_provider
+        self._bookings: dict[str, BookingResult] = {}
 
     def book(
         self,
+        approval_id: str,
         flight: FlightOption,
         hotel: HotelOption,
         constraints: TravelConstraints,
     ) -> BookingResult:
-        """Book selected travel options through the configured provider."""
-        return self.booking_provider.book(flight, hotel, constraints)
+        """Book selected travel options, returning a cached result when present."""
+        cached_result = self._bookings.get(approval_id)
+        if cached_result is not None:
+            return cached_result
+
+        result = self.booking_provider.book(flight, hotel, constraints)
+        self._bookings[approval_id] = result
+        return result

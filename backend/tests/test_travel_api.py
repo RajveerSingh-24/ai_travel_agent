@@ -5,6 +5,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from schemas.booking import BookingResult, BookingStatus
 from schemas.travel import TravelConstraints
 from services.search_service import TravelSearchResult
 
@@ -302,7 +303,16 @@ class TestTravelBookingEndpoint:
     """Tests for booking approved in-memory travel recommendations."""
 
     @staticmethod
-    def create_pending_approval(client, mock_llm_service):
+    def create_pending_approval(
+        client,
+        mock_llm_service,
+        selected_recommendation_ids=None,
+    ):
+        if selected_recommendation_ids is None:
+            selected_recommendation_ids = [
+                "mock-flight-001",
+                "mock-hotel-001",
+            ]
         mock_llm_service.parse_travel_request.return_value = TravelConstraints(
             origin="New York",
             destination="Paris",
@@ -315,10 +325,7 @@ class TestTravelBookingEndpoint:
             json={
                 "session_id": "booking-session",
                 "message": "Plan my trip",
-                "selected_recommendation_ids": [
-                    "mock-flight-001",
-                    "mock-hotel-001",
-                ],
+                "selected_recommendation_ids": selected_recommendation_ids,
             },
         )
         assert response.status_code == 200
@@ -427,3 +434,111 @@ class TestTravelBookingEndpoint:
 
         assert response.status_code == 200
         assert response.json()["booking"]["status"] == "failed"
+
+    def test_repeated_booking_returns_same_result_without_calling_provider_again(
+        self, client_and_llm_service
+    ):
+        client, mock_llm_service, main = client_and_llm_service
+        approval_id = self.create_pending_approval(client, mock_llm_service)
+        self.approve(client, approval_id)
+        provider = Mock()
+        provider.book.return_value = BookingResult(
+            booking_id="cached-booking-1",
+            status=BookingStatus.CONFIRMED,
+            selected_flight_id="mock-flight-001",
+            selected_hotel_id="mock-hotel-001",
+            total_price=1340.0,
+            currency="USD",
+        )
+        main.booking_service.booking_provider = provider
+
+        first_response = client.post(
+            "/api/travel/book",
+            json={"session_id": "booking-session", "approval_id": approval_id},
+        )
+        provider.reset_mock()
+        second_response = client.post(
+            "/api/travel/book",
+            json={"session_id": "booking-session", "approval_id": approval_id},
+        )
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert second_response.json()["booking"] == first_response.json()["booking"]
+        provider.book.assert_not_called()
+
+    def test_failed_booking_is_returned_unchanged_on_repeat(self, client_and_llm_service):
+        client, mock_llm_service, main = client_and_llm_service
+        approval_id = self.create_pending_approval(client, mock_llm_service)
+        self.approve(client, approval_id)
+        main.session_constraints["booking-session"] = main.session_constraints[
+            "booking-session"
+        ].model_copy(update={"budget": 1.0})
+
+        first_response = client.post(
+            "/api/travel/book",
+            json={"session_id": "booking-session", "approval_id": approval_id},
+        )
+        second_response = client.post(
+            "/api/travel/book",
+            json={"session_id": "booking-session", "approval_id": approval_id},
+        )
+
+        assert first_response.status_code == 200
+        assert first_response.json()["booking"]["status"] == "failed"
+        assert second_response.json()["booking"] == first_response.json()["booking"]
+
+    def test_different_approvals_create_independent_bookings(
+        self, client_and_llm_service
+    ):
+        client, mock_llm_service, main = client_and_llm_service
+        provider = Mock()
+        provider.book.side_effect = [
+            BookingResult(
+                booking_id="booking-1",
+                status=BookingStatus.CONFIRMED,
+                selected_flight_id="mock-flight-001",
+                selected_hotel_id="mock-hotel-001",
+                total_price=1340.0,
+                currency="USD",
+            ),
+            BookingResult(
+                booking_id="booking-2",
+                status=BookingStatus.CONFIRMED,
+                selected_flight_id="mock-flight-001",
+                selected_hotel_id="mock-hotel-001",
+                total_price=1340.0,
+                currency="USD",
+            ),
+        ]
+        main.booking_service.booking_provider = provider
+
+        first_approval_id = self.create_pending_approval(client, mock_llm_service)
+        self.approve(client, first_approval_id)
+        second_approval_id = self.create_pending_approval(client, mock_llm_service)
+        self.approve(client, second_approval_id)
+
+        first_response = client.post(
+            "/api/travel/book",
+            json={
+                "session_id": "booking-session",
+                "approval_id": first_approval_id,
+            },
+        )
+        second_response = client.post(
+            "/api/travel/book",
+            json={
+                "session_id": "booking-session",
+                "approval_id": second_approval_id,
+            },
+        )
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert provider.book.call_count == 2
+        assert first_response.json()["booking"]["booking_id"] == "booking-1"
+        assert second_response.json()["booking"]["booking_id"] == "booking-2"
+        assert (
+            main.booking_service._bookings[first_approval_id]
+            is not main.booking_service._bookings[second_approval_id]
+        )

@@ -249,6 +249,7 @@ async def book_travel(request: TravelBookingRequest):
             )
 
         booking = booking_service.book(
+            request.approval_id,
             recommendation.flight,
             recommendation.hotel,
             constraints,
