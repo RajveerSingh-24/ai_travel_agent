@@ -1,5 +1,6 @@
 import importlib
 from unittest.mock import Mock, patch
+from urllib import response
 
 import httpx
 import pytest
@@ -16,24 +17,31 @@ def client_and_llm_service(monkeypatch):
     original_client_init = httpx.Client.__init__
 
     def compatible_client_init(self, *args, **kwargs):
-        """Support Starlette 0.27 passing its removed ``app`` argument."""
         kwargs.pop("app", None)
         original_client_init(self, *args, **kwargs)
 
     monkeypatch.setattr(httpx.Client, "__init__", compatible_client_init)
 
-    with patch("services.travel_orchestrator.LLMService") as mock_llm_service_class, \
-         patch("services.langgraph_orchestrator.LLMService") as mock_lg_llm_service_class:
-        mock_lg_llm_service_class.return_value = mock_llm_service_class.return_value
+    import main
+    main = importlib.reload(main)
 
-        import main
+    mock_llm_service = Mock()
 
-        main = importlib.reload(main)
-        main.session_constraints.clear()
-        main.session_recommendations.clear()
+    main.llm_service = mock_llm_service
 
-        with TestClient(main.app) as client:
-            yield client, mock_llm_service_class.return_value, main
+    main.langgraph_orchestrator = main.LangGraphTravelOrchestrator(
+        llm_service=mock_llm_service,
+        search_service=main.travel_search_service,
+        recommendation_service=main.travel_recommendation_service,
+    )
+
+    main.session_constraints.clear()
+    main.session_recommendations.clear()
+
+    with TestClient(main.app) as client:
+        yield client, mock_llm_service, main
+    
+
 
 
 class TestTravelPlanEndpoint:
@@ -53,7 +61,6 @@ class TestTravelPlanEndpoint:
             "/api/travel/plan",
             json={"session_id": "session-1", "message": "Plan a Paris trip"},
         )
-
         assert response.status_code == 200
         response_data = response.json()
         assert response_data["session_id"] == "session-1"
@@ -116,7 +123,6 @@ class TestTravelPlanEndpoint:
             "/api/travel/plan",
             json={"session_id": "session-4", "message": "Invalid request"},
         )
-
         assert response.status_code == 400
         assert response.json()["detail"] == "User message cannot be empty"
 
@@ -155,8 +161,8 @@ class TestTravelPlanEndpoint:
             return_date="2026-09-08",
             travellers=2,
         )
-        main.travel_search_service = Mock()
-        main.travel_search_service.search.return_value = TravelSearchResult(
+        main.langgraph_orchestrator._search_service = Mock()
+        main.langgraph_orchestrator._search_service.search.return_value = TravelSearchResult(
             flights=[],
             hotels=[],
         )

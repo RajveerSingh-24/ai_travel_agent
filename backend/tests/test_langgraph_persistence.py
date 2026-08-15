@@ -2,6 +2,7 @@ from datetime import date
 from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
+import httpx
 
 from schemas.travel import TravelConstraints
 from schemas.booking import BookingStatus
@@ -9,13 +10,27 @@ import main
 
 
 @pytest.fixture
-def client_with_mock_llm():
+def client_with_mock_llm(monkeypatch):
     """Fixture that patches LLMService inside main and orchestrator."""
-    with patch("services.langgraph_orchestrator.LLMService") as mock_class:
+
+    original_client_init = httpx.Client.__init__
+
+    def compatible_client_init(self, *args, **kwargs):
+        kwargs.pop("app", None)
+        original_client_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "__init__", compatible_client_init)
+
+    with patch("services.llm_service.LLMService") as mock_class:
         mock_llm = mock_class.return_value
-        # Re-initialize main app to reload the orchestrator in the patch context
+
         import importlib
         importlib.reload(main)
+
+        # Make sure both the main service and LangGraph use the same mock.
+        assert main.llm_service is mock_llm
+        assert main.langgraph_orchestrator.llm_service is mock_llm
+
         main.session_recommendations.clear()
 
         with TestClient(main.app) as client:

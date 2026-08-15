@@ -1,7 +1,7 @@
 import json
 import os
 from typing import Optional
-from datetime import datetime
+from datetime import date
 import google.genai as genai
 from pydantic import ValidationError
 
@@ -41,14 +41,27 @@ class LLMService:
 
         # Build the prompt with schema instructions
         schema_json = TravelConstraints.model_json_schema()
+        today = date.today().isoformat()
+
         prompt = f"""You are a travel planning assistant. Extract travel constraints from the user's message.
+
+        Today's date is {today}.
         
 Return a JSON object matching this exact schema:
 {json.dumps(schema_json, indent=2)}
 
 Important notes:
-- Use YYYY-MM-DD format for dates
-- If a travel constraint is not explicitly provided by the user, return null. Never invent or infer missing travel constraints. Do not calculate or infer return_date unless the user explicitly provides it.
+- Use YYYY-MM-DD format for dates.
+- If the user explicitly provides a year, use that year.
+- If the user provides a month and day but no year, use the next occurrence of that date relative to today's date.
+- Never choose a previous year when the user did not specify a year.
+- For example, if today's date is 2026-08-15:
+  - "Oct 1" means 2026-10-01
+  - "Sept 1" means 2026-09-01
+  - "Jan 10" means 2027-01-10
+- If a travel constraint is not explicitly provided by the user, return null.
+- Never invent missing travel constraints.
+- Do not calculate or infer return_date unless the user explicitly provides it.
 - If the user does not explicitly specify a currency, return null; never infer or default the currency from location, language, or system locale
 - Ensure the JSON is valid and complete
 

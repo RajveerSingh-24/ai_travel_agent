@@ -75,19 +75,6 @@ except ValueError as e:
     travel_orchestrator = None
     travel_orchestrator_error = str(e)
 
-
-# Initialize the LangGraph travel orchestrator service.
-try:
-    langgraph_orchestrator = LangGraphTravelOrchestrator()
-except ValueError as e:
-    langgraph_orchestrator = None
-    langgraph_orchestrator_error = str(e)
-
-
-# Process-local state for the prototype's travel-planning sessions.
-session_constraints: dict[str, TravelConstraints] = {}
-session_recommendations: dict[str, list[TravelRecommendation]] = {}
-
 # Offline search and recommendation services for the prototype.
 travel_search_service = TravelSearchService(
     MockFlightProvider(),
@@ -97,6 +84,22 @@ travel_recommendation_service = TravelRecommendationService()
 travel_approval_service = TravelApprovalService()
 booking_service = BookingService(MockBookingProvider())
 
+
+# Initialize the LangGraph travel orchestrator service.
+try:
+    langgraph_orchestrator = LangGraphTravelOrchestrator(
+        llm_service=llm_service,
+        search_service=travel_search_service,
+        recommendation_service=travel_recommendation_service,
+    )
+except ValueError as e:
+    langgraph_orchestrator = None
+    langgraph_orchestrator_error = str(e)
+
+
+# Process-local state for the prototype's travel-planning sessions.
+session_constraints: dict[str, TravelConstraints] = {}
+session_recommendations: dict[str, list[TravelRecommendation]] = {}
 
 @app.get("/health")
 async def health():

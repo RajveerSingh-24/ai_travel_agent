@@ -54,56 +54,43 @@ class LangGraphTravelOrchestrator:
 
     @property
     def llm_service(self):
-        from unittest.mock import Mock, MagicMock
-        if isinstance(self._llm_service, (Mock, MagicMock)):
-            return self._llm_service
-        try:
-            import main
-            if hasattr(main, "llm_service") and main.llm_service is not None:
-                return main.llm_service
-        except Exception:
-            pass
         return self._llm_service
 
     @property
     def search_service(self):
-        from unittest.mock import Mock, MagicMock
-        if isinstance(self._search_service, (Mock, MagicMock)):
-            return self._search_service
-        try:
-            import main
-            if hasattr(main, "travel_search_service") and main.travel_search_service is not None:
-                return main.travel_search_service
-        except Exception:
-            pass
         return self._search_service
+
 
     @property
     def recommendation_service(self):
-        from unittest.mock import Mock, MagicMock
-        if isinstance(self._recommendation_service, (Mock, MagicMock)):
-            return self._recommendation_service
-        try:
-            import main
-            if hasattr(main, "travel_recommendation_service") and main.travel_recommendation_service is not None:
-                return main.travel_recommendation_service
-        except Exception:
-            pass
         return self._recommendation_service
-
+    
     def _build_graph(self):
         workflow = StateGraph(TravelAgentState)
 
         def parse_and_merge_node(state: TravelAgentState) -> dict:
-            # 1. Parse constraints using LLMService
             extracted = self.llm_service.parse_travel_request(state["user_message"])
-            
-            # 2. Merge with existing constraints if they exist
+
+            print("\n========== LANGGRAPH DEBUG ==========")
+            print("MESSAGE:", state["user_message"])
+            print("EXTRACTED:", extracted)
+            print("EXTRACTED TYPE:", type(extracted))
+            print("EXTRACTED DEPARTURE:", extracted.departure_date)
+            print("EXTRACTED DEPARTURE TYPE:", type(extracted.departure_date))
+
             existing = state.get("constraints")
+            print("EXISTING:", existing)
+
             if existing is not None:
                 merged = merge_travel_constraints(existing, extracted)
             else:
                 merged = extracted
+
+            print("MERGED:", merged)
+            print("MERGED DEPARTURE:", merged.departure_date)
+            print("MERGED DEPARTURE TYPE:", type(merged.departure_date))
+            print("====================================\n")
+
             return {"constraints": merged}
 
         def validate_node(state: TravelAgentState) -> dict:
@@ -122,12 +109,15 @@ class LangGraphTravelOrchestrator:
 
         def search_and_recommend_node(state: TravelAgentState) -> dict:
             constraints = state["constraints"]
+
             search_results = self.search_service.search(constraints)
+
             recommendations = self.recommendation_service.recommend(
                 constraints,
                 search_results.flights,
                 search_results.hotels,
             )
+
             return {"recommendations": recommendations}
 
         # Add nodes
