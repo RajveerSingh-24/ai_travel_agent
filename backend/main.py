@@ -20,6 +20,7 @@ from services.llm_service import LLMService
 from services.approval_service import TravelApprovalService
 from services.booking_service import BookingService
 from services.providers.duffel_flight_provider import DuffelFlightProvider
+from services.providers.duffel_hotel_provider import DuffelHotelProvider
 from services.providers.mock_booking_provider import MockBookingProvider
 from services.providers.mock_flight_provider import MockFlightProvider
 from services.providers.mock_hotel_provider import MockHotelProvider
@@ -76,17 +77,32 @@ except ValueError as e:
     travel_orchestrator = None
     travel_orchestrator_error = str(e)
 
+def create_travel_search_service() -> TravelSearchService:
+    """Create the travel search service from environment configuration."""
+    use_duffel = os.getenv("USE_DUFFEL", "").lower() == "true"
+    use_duffel_hotels = os.getenv("USE_DUFFEL_HOTELS", "").lower() == "true"
+
+    flight_provider = (
+        DuffelFlightProvider()
+        if use_duffel
+        else MockFlightProvider()
+    )
+
+    hotel_provider = (
+        DuffelHotelProvider()
+        if use_duffel_hotels
+        else MockHotelProvider()
+    )
+
+    return TravelSearchService(
+        flight_provider,
+        hotel_provider,
+    )
+
 # Use the mock provider by default.
 # Set USE_DUFFEL=true to explicitly enable the real Duffel provider.
-if os.getenv("USE_DUFFEL", "").lower() == "true":
-    flight_provider = DuffelFlightProvider()
-else:
-    flight_provider = MockFlightProvider()
+travel_search_service = create_travel_search_service()
 
-travel_search_service = TravelSearchService(
-    flight_provider,
-    MockHotelProvider(),
-)
 travel_recommendation_service = TravelRecommendationService()
 travel_approval_service = TravelApprovalService()
 booking_service = BookingService(MockBookingProvider())
