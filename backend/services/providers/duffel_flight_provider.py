@@ -99,7 +99,8 @@ class DuffelFlightProvider(FlightProvider):
 
         offers = data.get("data", {}).get("offers", [])
 
-        results = []
+        real_results = []
+        duffel_results = []
 
         for offer in offers:
             option = self._map_offer(
@@ -116,9 +117,16 @@ class DuffelFlightProvider(FlightProvider):
             ):
                 continue
 
-            results.append(option)
+            if option.airline == "Duffel Airways":
+                duffel_results.append(option)
+            else:
+                real_results.append(option)
 
-        return results
+        if real_results:
+            return real_results
+            
+        return duffel_results
+
 
     def _map_offer(
         self,
@@ -144,12 +152,8 @@ class DuffelFlightProvider(FlightProvider):
         outbound_first = outbound_segments[0]
         inbound_first = inbound_segments[0]
 
-        airline = (
-            outbound_first
-            .get("operating_carrier", {})
-            .get("name")
-        )
-
+        airline = offer.get("owner", {}).get("name")
+        
         if not airline:
             return None
 

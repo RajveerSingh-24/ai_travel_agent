@@ -1,97 +1,250 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, MouseEvent } from "react";
 
-type Message = {
-  role: "user" | "assistant";
-  content: string;
-};
-
-type Recommendation = {
-  flight: {
-    id: string;
-    airline: string;
-    origin: string;
-    destination: string;
-    departure_date: string;
-    return_date: string;
-    price: number;
-    currency: string;
-    direct: boolean;
-    duration_minutes: number;
-  };
-  hotel: {
-    id: string;
-    name: string;
-    destination: string;
-    rating: number;
-    price_per_night: number;
-    total_price: number;
-    currency: string;
-  };
-  total_price: number;
-  score: number;
-};
-
-type TravelApproval = {
-  approval_id: string;
-  session_id: string;
-  selected_recommendation_ids: string[];
-  status: "pending" | "approved" | "rejected";
-};
-
-type BookingResult = {
-  booking_id: string;
-  status: "pending" | "confirmed" | "failed";
-  selected_flight_id: string;
-  selected_hotel_id: string;
-  total_price: number;
-  currency: string;
-};
-type TravelPlanResponse = {
-  session_id: string;
-  constraints: {
-    origin: string | null;
-    destination: string | null;
-    departure_date: string | null;
-    return_date: string | null;
-    duration_days: number | null;
-    travellers: number | null;
-    budget: number | null;
-    currency: string | null;
-    direct_flight: boolean | null;
-    hotel_rating: number | null;
-  };
-  is_complete: boolean;
-  missing_fields: string[];
-  clarification_message: string | null;
+export type TripSession = {
+  id: string;
+  title: string;
+  messages: Message[];
   recommendations: Recommendation[] | null;
-  pending_approval: TravelApproval | null;
+  selectedRecommendation: Recommendation | null;
+  pendingApproval: TravelApproval | null;
+  booking: BookingResult | null;
+  createdAt: number;
 };
+
+import ThemeToggle from "../components/ui/ThemeToggle";
+import ChatPanel from "../components/chat/ChatPanel";
+import RecommendationPanel from "../components/travel/RecommendationPanel";
+import ApprovalPanel from "../components/booking/ApprovalPanel";
+import BookingConfirmation from "../components/booking/BookingConfirmation";
+
+import type {
+  Message,
+  Recommendation,
+  TravelApproval,
+  BookingResult,
+  TravelPlanResponse,
+} from "../components/travel/types";
 
 export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "Hi! I'm your AI Travel Agent. Tell me where you'd like to travel, and I'll help you plan your trip.",
-    },
-  ]);
+  const [sessions, setSessions] = useState<TripSession[]>([]);
+  const [sessionId, setSessionId] = useState("");
 
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const [selectedRecommendation, setSelectedRecommendation] =
-    useState<Recommendation | null>(null);
-
-  const [pendingApproval, setPendingApproval] =
-    useState<TravelApproval | null>(null);
- 
+  const [recommendations, setRecommendations] = useState<Recommendation[] | null>(null);
+  const [selectedRecommendation, setSelectedRecommendation] = useState<Recommendation | null>(null);
+  const [pendingApproval, setPendingApproval] = useState<TravelApproval | null>(null);
   const [booking, setBooking] = useState<BookingResult | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  const createNewTrip = () => {
+    const newId = `frontend-${crypto.randomUUID()}`;
+    const newSession: TripSession = {
+      id: newId,
+      title: "New Trip",
+      messages: [
+        {
+          role: "assistant",
+          content: "Tell me where you'd like to go, when you're travelling, and who's coming along. I'll take care of the planning.",
+        },
+      ],
+      recommendations: null,
+      selectedRecommendation: null,
+      pendingApproval: null,
+      booking: null,
+      createdAt: Date.now(),
+    };
+    setSessions((prev) => [newSession, ...prev]);
+    loadSession(newSession);
+  };
+
+  const loadSession = (session: TripSession) => {
+    setSessionId(session.id);
+    setMessages(session.messages);
+    setRecommendations(session.recommendations);
+    setSelectedRecommendation(session.selectedRecommendation);
+    setPendingApproval(session.pendingApproval);
+    setBooking(session.booking);
+  };
+
+  const deleteSession = (e: MouseEvent, idToDelete: string) => {
+    e.stopPropagation();
+    setSessions((prev) => {
+      const filtered = prev.filter((s) => s.id !== idToDelete);
+      localStorage.setItem("travel-agent-sessions", JSON.stringify(filtered));
+      if (sessionId === idToDelete) {
+        if (filtered.length > 0) {
+          setTimeout(() => loadSession(filtered[0]), 0);
+        } else {
+          setTimeout(() => createNewTrip(), 0);
+        }
+      }
+      return filtered;
+    });
+  };
+
+  // Initialize from local storage on mount
+  useEffect(() => {
+    const stored = localStorage.getItem("travel-agent-sessions");
+    let loadedSessions: TripSession[] = [];
+    if (stored) {
+      try {
+        loadedSessions = JSON.parse(stored);
+      } catch {}
+    }
+    if (loadedSessions.length > 0) {
+      setSessions(loadedSessions);
+      loadSession(loadedSessions[0]);
+    } else {
+      createNewTrip();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync state changes to active session
+  useEffect(() => {
+    if (!sessionId) return;
+    setSessions((prev) => {
+      const sessionIndex = prev.findIndex((s) => s.id === sessionId);
+      if (sessionIndex === -1) return prev;
+      const existing = prev[sessionIndex];
+      const updatedSession: TripSession = {
+        ...existing,
+        messages,
+        recommendations,
+        selectedRecommendation,
+        pendingApproval,
+        booking,
+      };
+      const newSessions = [...prev];
+      newSessions[sessionIndex] = updatedSession;
+      localStorage.setItem("travel-agent-sessions", JSON.stringify(newSessions));
+      return newSessions;
+    });
+  }, [sessionId, messages, recommendations, selectedRecommendation, pendingApproval, booking]);
+
+  const hasWorkspace =
+    recommendations !== null || selectedRecommendation !== null || booking !== null;
+
+  const sendMessage = async () => {
+    const message = input.trim();
+
+    if (!message || loading) {
+      return;
+    }
+
+    setInput("");
+    setLoading(true);
+
+    setMessages((previous) => [
+      ...previous,
+      {
+        role: "user",
+        content: message,
+      },
+    ]);
+
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/travel/plan",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            session_id: sessionId,
+            message,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+
+        throw new Error(
+          errorData?.detail ||
+            `Request failed with status ${response.status}`
+        );
+      }
+
+      const data: TravelPlanResponse = await response.json();
+
+      // Update session title dynamically based on destination
+      if (data.constraints?.destination) {
+        setSessions((prev) => {
+          const destTitle = `Trip to ${data.constraints!.destination}`;
+          const updated = prev.map((s) =>
+            s.id === sessionId && s.title !== destTitle
+              ? { ...s, title: destTitle }
+              : s
+          );
+          localStorage.setItem("travel-agent-sessions", JSON.stringify(updated));
+          return updated;
+        });
+      }
+
+      if (data.clarification_message) {
+        setMessages((previous) => [
+          ...previous,
+          {
+            role: "assistant",
+            content: data.clarification_message!,
+          },
+        ]);
+      }
+
+      if (data.recommendations && data.recommendations.length > 0) {
+        setRecommendations(data.recommendations);
+
+        setMessages((previous) => [
+          ...previous,
+          {
+            role: "assistant",
+            content:
+              "I found some options that match your trip. You can review them alongside our conversation.",
+          },
+        ]);
+      }
+
+      if (
+        data.is_complete &&
+        (!data.recommendations || data.recommendations.length === 0)
+      ) {
+        setMessages((previous) => [
+          ...previous,
+          {
+            role: "assistant",
+            content:
+              "Your trip details are complete, but I couldn't find any matching options.",
+          },
+        ]);
+      }
+    } catch (error) {
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content:
+            error instanceof Error
+              ? `Sorry, something went wrong: ${error.message}`
+              : "Sorry, something went wrong while planning your trip.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const selectRecommendation = async (
     recommendation: Recommendation
   ) => {
+    if (loading) {
+      return;
+    }
+
     setLoading(true);
     setSelectedRecommendation(recommendation);
 
@@ -105,7 +258,7 @@ export default function Home() {
           },
           body: JSON.stringify({
             session_id: sessionId,
-            message: "I would like to select this recommendation.",
+            message: [...messages].reverse().find(m => m.role === "user")?.content || "Plan my trip",
             selected_recommendation_ids: [
               recommendation.flight.id,
               recommendation.hotel.id,
@@ -146,8 +299,8 @@ export default function Home() {
     }
   };
 
- const approveRecommendation = async () => {
-    if (!pendingApproval) {
+  const approveRecommendation = async () => {
+    if (!pendingApproval || loading) {
       return;
     }
 
@@ -188,7 +341,7 @@ export default function Home() {
         {
           role: "assistant",
           content:
-            "Your selection has been approved. I can now proceed with the booking.",
+            "Your trip has been approved. I can now proceed with the booking.",
         },
       ]);
     } catch (error) {
@@ -208,7 +361,7 @@ export default function Home() {
   };
 
   const rejectRecommendation = async () => {
-    if (!pendingApproval) {
+    if (!pendingApproval || loading) {
       return;
     }
 
@@ -243,17 +396,16 @@ export default function Home() {
         await response.json();
 
       setPendingApproval(data.approval);
+      setSelectedRecommendation(null);
 
       setMessages((previous) => [
         ...previous,
         {
           role: "assistant",
           content:
-            "Your selection was rejected. You can choose another travel option.",
+            "No problem. Let's look at the other options.",
         },
       ]);
-
-      setSelectedRecommendation(null);
     } catch (error) {
       setMessages((previous) => [
         ...previous,
@@ -261,8 +413,8 @@ export default function Home() {
           role: "assistant",
           content:
             error instanceof Error
-              ? `Sorry, I couldn't reject the selection: ${error.message}`
-              : "Sorry, I couldn't reject the selection.",
+              ? `Sorry, I couldn't change the selection: ${error.message}`
+              : "Sorry, I couldn't change the selection.",
         },
       ]);
     } finally {
@@ -273,7 +425,8 @@ export default function Home() {
   const bookRecommendation = async () => {
     if (
       !pendingApproval ||
-      pendingApproval.status !== "approved"
+      pendingApproval.status !== "approved" ||
+      loading
     ) {
       return;
     }
@@ -313,7 +466,8 @@ export default function Home() {
         ...previous,
         {
           role: "assistant",
-          content: `Booking confirmed! Your booking ID is ${data.booking.booking_id}.`,
+          content:
+            "Your trip has been booked successfully. The booking details are shown alongside our conversation.",
         },
       ]);
     } catch (error) {
@@ -332,430 +486,247 @@ export default function Home() {
     }
   };
 
-  const [recommendations, setRecommendations] = useState<
-    Recommendation[] | null
-  >(null);
-
-  const [sessionId] = useState(
-    () => `frontend-${crypto.randomUUID()}`
-  );
-
-  const sendMessage = async () => {
-    const message = input.trim();
-
-    if (!message || loading) {
-      return;
-    }
-
-    setInput("");
-    setLoading(true);
-    setRecommendations(null);
-
-    setMessages((previous) => [
-      ...previous,
-      {
-        role: "user",
-        content: message,
-      },
-    ]);
-
-    try {
-      const response = await fetch("http://localhost:8000/api/travel/plan", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          session_id: sessionId,
-          message,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-
-        throw new Error(
-          errorData?.detail || `Request failed with status ${response.status}`
-        );
-      }
-
-      const data: TravelPlanResponse = await response.json();
-
-      if (data.clarification_message) {
-        setMessages((previous) => [
-          ...previous,
-          {
-            role: "assistant",
-            content: data.clarification_message!,
-          },
-        ]);
-      }
-
-      if (data.recommendations && data.recommendations.length > 0) {
-        setRecommendations(data.recommendations);
-
-        setMessages((previous) => [
-          ...previous,
-          {
-            role: "assistant",
-            content:
-              "Great! I found some travel options for you. Take a look below.",
-          },
-        ]);
-      }
-
-      if (
-        data.is_complete &&
-        (!data.recommendations || data.recommendations.length === 0)
-      ) {
-        setMessages((previous) => [
-          ...previous,
-          {
-            role: "assistant",
-            content:
-              "Your trip details are complete, but I couldn't find any matching options.",
-          },
-        ]);
-      }
-    } catch (error) {
-      setMessages((previous) => [
-        ...previous,
-        {
-          role: "assistant",
-          content:
-            error instanceof Error
-              ? `Sorry, something went wrong: ${error.message}`
-              : "Sorry, something went wrong while planning your trip.",
-        },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      sendMessage();
-    }
-  };
-
-  const formatDuration = (minutes: number) => {
-    const hours = Math.floor(minutes / 60);
-    const remainingMinutes = minutes % 60;
-
-    return `${hours}h ${remainingMinutes}m`;
+  const startNewTrip = () => {
+    createNewTrip();
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 text-white">
-      <div className="mx-auto flex min-h-screen max-w-5xl flex-col px-4 py-8">
-        {/* Header */}
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold">
-            ✈️ AI Travel Agent
-          </h1>
+    <main className="h-screen overflow-hidden bg-background text-foreground">
+      <div className="flex h-full flex-col">
+        {/* Application header */}
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-card/85 backdrop-blur-md px-6 sticky top-0 z-50 transition-all duration-200">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-xs border border-border shadow-sm shadow-primary/10">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="rotate-45"
+              >
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </div>
 
-          <p className="mt-2 text-slate-400">
-            Tell me about your trip and I&apos;ll help you find the best options.
-          </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm font-bold tracking-tight text-foreground leading-none">
+                  AI Travel Agent
+                </h1>
+                <span className="inline-flex items-center rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  Agent v1.0
+                </span>
+              </div>
+
+              <p className="text-[10px] text-muted-foreground mt-1 leading-none font-medium">
+                Intelligent trip planning workspace
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            {hasWorkspace && (
+              <button
+                type="button"
+                onClick={startNewTrip}
+                className="lg:hidden flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-all duration-200 hover:bg-muted hover:text-foreground active:scale-[0.98] shadow-sm"
+              >
+                <svg
+                  width="11"
+                  height="11"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                New trip
+              </button>
+            )}
+
+            <button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className="hidden lg:flex items-center justify-center h-9 w-9 rounded-md border border-border bg-background hover:bg-muted text-muted-foreground transition-colors"
+              title="Toggle sidebar"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <line x1="9" y1="3" x2="9" y2="21" />
+              </svg>
+            </button>
+
+            <ThemeToggle />
+          </div>
         </header>
 
-        {/* Chat */}
-        <section className="flex-1 rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-xl">
-          <div className="space-y-4">
-            {messages.map((message, index) => (
-              <div
-                key={index}
-                className={`flex ${
-                  message.role === "user"
-                    ? "justify-end"
-                    : "justify-start"
-                }`}
+        {/* Main layout wrapper */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* Sidebar */}
+          <aside className={`hidden lg:flex flex-col shrink-0 border-border bg-card transition-all duration-300 ${isSidebarOpen ? "w-64 border-r" : "w-0 overflow-hidden border-r-0"}`}>
+            <div className="p-4 shrink-0 w-64">
+              <button
+                type="button"
+                onClick={startNewTrip}
+                className="w-full flex items-center justify-between gap-1.5 rounded-lg border border-border bg-background px-3.5 py-2 text-xs font-semibold text-foreground transition-all duration-200 hover:bg-muted active:scale-[0.98] shadow-sm"
               >
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                    message.role === "user"
-                      ? "bg-indigo-600 text-white"
-                      : "bg-slate-800 text-slate-100"
-                  }`}
-                >
-                  {message.content.split("\n").map((line, lineIndex) => (
-                    <p key={lineIndex} className="leading-6">
-                      {line}
-                    </p>
+                <span className="flex items-center gap-1.5">
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  New trip
+                </span>
+                <span className="text-[10px] font-mono text-muted-foreground border border-border rounded px-1 py-0.5 leading-none">
+                  ⌘N
+                </span>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-3 py-2 space-y-4 w-64">
+              <div>
+                <h3 className="px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  History
+                </h3>
+                <div className="mt-1.5 space-y-1">
+                  {sessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className={`group relative flex items-center justify-between rounded-lg px-2.5 py-2 text-xs transition ${
+                        sessionId === session.id
+                          ? "bg-muted font-semibold text-foreground border border-border shadow-sm"
+                          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground border border-transparent"
+                      }`}
+                    >
+                      <button
+                        onClick={() => loadSession(session)}
+                        className="flex-1 text-left flex items-center gap-2 truncate pr-6 focus:outline-none"
+                      >
+                        {sessionId === session.id ? (
+                          <span className="relative flex h-1.5 w-1.5 shrink-0 ml-1 mr-0.5">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                          </span>
+                        ) : (
+                          <svg className="h-3.5 w-3.5 opacity-65 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                          </svg>
+                        )}
+                        <span className="truncate">{session.title}</span>
+                      </button>
+                      
+                      <button
+                        onClick={(e) => deleteSession(e, session.id)}
+                        title="Delete conversation"
+                        className={`absolute right-2 p-1 rounded hover:bg-muted-foreground/15 text-muted-foreground hover:text-red-500 transition duration-150 ${
+                          sessionId === session.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100"
+                        }`}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        </svg>
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
-            ))}
+            </div>
 
-            {loading && (
-              <div className="flex justify-start">
-                <div className="rounded-2xl bg-slate-800 px-4 py-3 text-slate-400">
-                  Thinking...
+            {/* Profile footer */}
+            <div className="shrink-0 border-t border-border p-4 bg-muted/10 w-64">
+              <div className="flex items-center gap-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-muted text-[10px] font-bold text-foreground border border-border">
+                  U
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-foreground leading-none">
+                    Guest Planner
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-1 leading-none">
+                    Session Active
+                  </p>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          {/* Main workspace */}
+          <div className="min-h-0 flex-1 flex flex-col h-full bg-background">
+            {!hasWorkspace ? (
+              /*
+               * Initial state:
+               * The conversation gets the entire workspace.
+               */
+              <ChatPanel
+                messages={messages}
+                input={input}
+                loading={loading}
+                onInputChange={setInput}
+                onSend={sendMessage}
+              />
+            ) : (
+              /*
+               * Planning state:
+               * Conversation remains available on the left while
+               * travel options / approval / booking occupy the right.
+               */
+              <div className="grid h-full min-h-0 grid-cols-1 lg:grid-cols-[minmax(380px,0.85fr)_minmax(520px,1.15fr)]">
+                <div className="min-h-0 border-b border-border bg-background lg:border-b-0 lg:border-r">
+                  <ChatPanel
+                    messages={messages}
+                    input={input}
+                    loading={loading}
+                    onInputChange={setInput}
+                    onSend={sendMessage}
+                  />
+                </div>
+
+                <div className="min-h-0 bg-background">
+                  {booking ? (
+                    <BookingConfirmation
+                      booking={booking}
+                      recommendation={selectedRecommendation}
+                      onNewTrip={startNewTrip}
+                    />
+                  ) : pendingApproval && selectedRecommendation ? (
+                    <ApprovalPanel
+                      approval={pendingApproval}
+                      recommendation={selectedRecommendation}
+                      loading={loading}
+                      onApprove={approveRecommendation}
+                      onReject={rejectRecommendation}
+                      onBook={bookRecommendation}
+                    />
+                  ) : (
+                    <RecommendationPanel
+                      recommendations={recommendations ?? []}
+                      selectedRecommendation={selectedRecommendation}
+                      loading={loading}
+                      onSelect={selectRecommendation}
+                    />
+                  )}
                 </div>
               </div>
             )}
           </div>
-
-          {/* Input */}
-          <div className="mt-6 flex gap-3 border-t border-slate-800 pt-4">
-            <input
-              type="text"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="e.g. I want to travel from Delhi to Paris..."
-              disabled={loading}
-              className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-indigo-500"
-            />
-
-            <button
-              onClick={sendMessage}
-              disabled={loading || !input.trim()}
-              className="rounded-xl bg-indigo-600 px-6 py-3 font-semibold transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-700"
-            >
-              {loading ? "..." : "Send"}
-            </button>
-          </div>
-        </section>
-
-        {/* Recommendations */}
-        {recommendations && recommendations.length > 0 && (
-          <section className="mt-8">
-            <h2 className="mb-4 text-2xl font-bold">
-              Recommended Options
-            </h2>
-
-            <div className="grid gap-5">
-              {recommendations.map((recommendation, index) => (
-                <div
-                  key={`${recommendation.flight.id}-${recommendation.hotel.id}`}
-                  className="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-lg"
-                >
-                  <div className="mb-5 flex items-center justify-between">
-                    <h3 className="text-lg font-semibold">
-                      Option {index + 1}
-                    </h3>
-
-                    <span className="rounded-full bg-indigo-500/20 px-3 py-1 text-sm text-indigo-300">
-                      Score {recommendation.score.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {/* Flight */}
-                  <div className="rounded-xl bg-slate-800 p-4">
-                    <p className="mb-2 text-sm font-medium text-indigo-300">
-                      ✈️ Flight
-                    </p>
-
-                    <div className="flex flex-col justify-between gap-3 md:flex-row">
-                      <div>
-                        <p className="font-semibold">
-                          {recommendation.flight.airline}
-                        </p>
-
-                        <p className="text-slate-400">
-                          {recommendation.flight.origin} →{" "}
-                          {recommendation.flight.destination}
-                        </p>
-                      </div>
-
-                      <div className="text-left md:text-right">
-                        <p className="font-semibold">
-                          {recommendation.flight.currency}{" "}
-                          {recommendation.flight.price.toFixed(2)}
-                        </p>
-
-                        <p className="text-sm text-slate-400">
-                          {recommendation.flight.direct
-                            ? "Direct"
-                            : "Non-direct"}{" "}
-                          ·{" "}
-                          {formatDuration(
-                            recommendation.flight.duration_minutes
-                          )}
-                        </p>
-                      </div>
-                    </div>
-
-                    <p className="mt-3 text-sm text-slate-400">
-                      {recommendation.flight.departure_date} →{" "}
-                      {recommendation.flight.return_date}
-                    </p>
-                  </div>
-
-                  {/* Hotel */}
-                  <div className="mt-4 rounded-xl bg-slate-800 p-4">
-                    <p className="mb-2 text-sm font-medium text-indigo-300">
-                      🏨 Hotel
-                    </p>
-
-                    <div className="flex flex-col justify-between gap-3 md:flex-row">
-                      <div>
-                        <p className="font-semibold">
-                          {recommendation.hotel.name}
-                        </p>
-
-                        <p className="text-slate-400">
-                          {recommendation.hotel.destination} ·{" "}
-                          {recommendation.hotel.rating.toFixed(1)} ⭐
-                        </p>
-                      </div>
-
-                      <div className="text-left md:text-right">
-                        <p className="font-semibold">
-                          {recommendation.hotel.currency}{" "}
-                          {recommendation.hotel.total_price.toFixed(2)}
-                        </p>
-
-                        <p className="text-sm text-slate-400">
-                          {recommendation.hotel.currency}{" "}
-                          {recommendation.hotel.price_per_night.toFixed(2)}
-                          /night
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Total */}
-                  <div className="mt-5 flex flex-col gap-4 border-t border-slate-800 pt-5 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm text-slate-400">
-                        Total trip cost
-                      </p>
-
-                      <p className="text-xl font-bold">
-                        {recommendation.flight.currency}{" "}
-                        {recommendation.total_price.toFixed(2)}
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={() => selectRecommendation(recommendation)}
-                      disabled={loading}
-                      className="rounded-xl bg-indigo-600 px-5 py-3 font-semibold transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-700"
-                    >
-                      {loading && selectedRecommendation === recommendation
-                        ? "Selecting..."
-                        : "Select this option"}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-        {pendingApproval && selectedRecommendation && !booking && (
-          <section className="mt-8 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6">
-            <h2 className="text-2xl font-bold">
-              Review your selection
-            </h2>
-
-            <p className="mt-2 text-slate-300">
-              You selected{" "}
-              <strong>{selectedRecommendation.flight.airline}</strong>{" "}
-              +{" "}
-              <strong>{selectedRecommendation.hotel.name}</strong>.
-            </p>
-
-            <div className="mt-4 rounded-xl bg-slate-900 p-4">
-              <p className="text-sm text-slate-400">
-                Total trip cost
-              </p>
-
-              <p className="mt-1 text-2xl font-bold">
-                {selectedRecommendation.flight.currency}{" "}
-                {selectedRecommendation.total_price.toFixed(2)}
-              </p>
-            </div>
-
-            <p className="mt-4 text-sm text-amber-300">
-              Approval ID: {pendingApproval.approval_id}
-            </p>
-
-            <p className="mt-2 text-sm text-slate-400">
-              Status: {pendingApproval.status}
-            </p>
-
-            {pendingApproval.status === "pending" && (
-              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-                <button
-                  onClick={approveRecommendation}
-                  disabled={loading}
-                  className="flex-1 rounded-xl bg-amber-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-slate-600"
-                >
-                  {loading ? "Processing..." : "Approve & Continue"}
-                </button>
-
-                <button
-                  onClick={rejectRecommendation}
-                  disabled={loading}
-                  className="flex-1 rounded-xl border border-red-500/50 bg-red-500/10 px-5 py-3 font-semibold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:bg-slate-700"
-                >
-                  {loading ? "Processing..." : "Reject"}
-                </button>
-              </div>
-            )}
-
-            {pendingApproval.status === "approved" && (
-              <button
-                onClick={bookRecommendation}
-                disabled={loading}
-                className="mt-5 w-full rounded-xl bg-green-600 px-5 py-3 font-semibold text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-slate-700"
-              >
-                {loading ? "Booking..." : "Confirm Booking"}
-              </button>
-            )}
-          </section>
-        )}
-        {booking && (
-          <section className="mt-8 rounded-2xl border border-green-500/30 bg-green-500/10 p-6">
-            <div className="flex items-center gap-3">
-              <span className="text-3xl">✅</span>
-
-              <div>
-                <h2 className="text-2xl font-bold">
-                  Booking Confirmed
-                </h2>
-
-                <p className="text-slate-300">
-                  Your flight and hotel have been successfully booked.
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-5 grid gap-3 rounded-xl bg-slate-900 p-4">
-              <div>
-                <p className="text-sm text-slate-400">Booking ID</p>
-                <p className="font-semibold">{booking.booking_id}</p>
-              </div>
-
-              <div>
-                <p className="text-sm text-slate-400">Flight</p>
-                <p className="font-semibold">{booking.selected_flight_id}</p>
-              </div>
-
-              <div>
-                <p className="text-sm text-slate-400">Hotel</p>
-                <p className="font-semibold">{booking.selected_hotel_id}</p>
-              </div>
-
-              <div>
-                <p className="text-sm text-slate-400">Total</p>
-                <p className="text-xl font-bold">
-                  {booking.currency} {booking.total_price.toFixed(2)}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-sm text-slate-400">Status</p>
-                <p className="font-semibold text-green-400">
-                  {booking.status}
-                </p>
-              </div>
-            </div>
-          </section>
-        )}
+        </div>
       </div>
     </main>
   );

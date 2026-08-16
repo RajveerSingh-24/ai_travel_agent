@@ -196,7 +196,7 @@ async def plan_travel(request: TravelPlanRequest):
                     for recommendation in (recommendations or [])
                 )
                 if not is_selected_recommendation:
-                    raise ValueError("Selected recommendation is not available")
+                    raise ValueError(f"Selected recommendation is not available. selected_ids: {selected_ids}, recs: {[{r.flight.id, r.hotel.id} for r in (recommendations or [])]}")
                 pending_approval = travel_approval_service.create_pending_approval(
                     request.session_id,
                     request.selected_recommendation_ids,
