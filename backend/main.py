@@ -19,6 +19,7 @@ from schemas.api import (
 from services.llm_service import LLMService
 from services.approval_service import TravelApprovalService
 from services.booking_service import BookingService
+from services.providers.duffel_flight_provider import DuffelFlightProvider
 from services.providers.mock_booking_provider import MockBookingProvider
 from services.providers.mock_flight_provider import MockFlightProvider
 from services.providers.mock_hotel_provider import MockHotelProvider
@@ -75,9 +76,15 @@ except ValueError as e:
     travel_orchestrator = None
     travel_orchestrator_error = str(e)
 
-# Offline search and recommendation services for the prototype.
+# Use the mock provider by default.
+# Set USE_DUFFEL=true to explicitly enable the real Duffel provider.
+if os.getenv("USE_DUFFEL", "").lower() == "true":
+    flight_provider = DuffelFlightProvider()
+else:
+    flight_provider = MockFlightProvider()
+
 travel_search_service = TravelSearchService(
-    MockFlightProvider(),
+    flight_provider,
     MockHotelProvider(),
 )
 travel_recommendation_service = TravelRecommendationService()
