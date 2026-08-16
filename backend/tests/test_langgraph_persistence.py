@@ -12,7 +12,7 @@ import main
 @pytest.fixture
 def client_with_mock_llm(monkeypatch):
     """Fixture that patches LLMService inside main and orchestrator."""
-
+    monkeypatch.setenv("USE_DUFFEL", "false")
     original_client_init = httpx.Client.__init__
 
     def compatible_client_init(self, *args, **kwargs):

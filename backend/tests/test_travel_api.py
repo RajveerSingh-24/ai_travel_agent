@@ -14,6 +14,8 @@ from services.search_service import TravelSearchResult
 @pytest.fixture
 def client_and_llm_service(monkeypatch):
     """Provide the API client with its Gemini-backed LLM service mocked."""
+    monkeypatch.setenv("USE_DUFFEL", "false")
+
     original_client_init = httpx.Client.__init__
 
     def compatible_client_init(self, *args, **kwargs):

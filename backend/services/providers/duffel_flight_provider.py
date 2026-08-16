@@ -1,3 +1,5 @@
+import os
+from dotenv import load_dotenv
 from datetime import date
 from typing import Any, Optional
 
@@ -8,6 +10,7 @@ from schemas.travel import TravelConstraints
 from services.location_service import LocationService
 from services.providers.flight_provider import FlightProvider
 
+load_dotenv()
 
 class DuffelFlightProvider(FlightProvider):
     """Flight provider backed by the Duffel API."""
@@ -24,8 +27,6 @@ class DuffelFlightProvider(FlightProvider):
         self.location_service = location_service or LocationService()
 
         if api_token is None:
-            import os
-
             api_token = os.getenv("DUFFEL_API_TOKEN")
 
         self.api_token = api_token
@@ -89,6 +90,7 @@ class DuffelFlightProvider(FlightProvider):
                 "Duffel-Version": "v2",
                 "Content-Type": "application/json",
             },
+            timeout=30,
         )
 
         response.raise_for_status()
