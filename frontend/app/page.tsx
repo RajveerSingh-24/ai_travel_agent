@@ -40,6 +40,14 @@ type TravelApproval = {
   status: "pending" | "approved" | "rejected";
 };
 
+type BookingResult = {
+  booking_id: string;
+  status: "pending" | "confirmed" | "failed";
+  selected_flight_id: string;
+  selected_hotel_id: string;
+  total_price: number;
+  currency: string;
+};
 type TravelPlanResponse = {
   session_id: string;
   constraints: {
@@ -78,16 +86,19 @@ export default function Home() {
 
   const [pendingApproval, setPendingApproval] =
     useState<TravelApproval | null>(null);
-
+ 
+  const [booking, setBooking] = useState<BookingResult | null>(null);
 
   const selectRecommendation = async (
-      recommendation: Recommendation
-    ) => {
-      setLoading(true);
-      setSelectedRecommendation(recommendation);
+    recommendation: Recommendation
+  ) => {
+    setLoading(true);
+    setSelectedRecommendation(recommendation);
 
-      try {
-        const response = await fetch("http://localhost:8000/api/travel/plan", {
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/travel/plan",
+        {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -100,39 +111,226 @@ export default function Home() {
               recommendation.hotel.id,
             ],
           }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => null);
-
-          throw new Error(
-            errorData?.detail ||
-              `Request failed with status ${response.status}`
-          );
         }
+      );
 
-        const data: TravelPlanResponse = await response.json();
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
 
-        if (data.pending_approval) {
-          setPendingApproval(data.pending_approval);
-        }
-      } catch (error) {
-        setMessages((previous) => [
-          ...previous,
-          {
-            role: "assistant",
-            content:
-              error instanceof Error
-                ? `Sorry, I couldn't select that option: ${error.message}`
-                : "Sorry, I couldn't select that option.",
-          },
-        ]);
-
-        setSelectedRecommendation(null);
-      } finally {
-        setLoading(false);
+        throw new Error(
+          errorData?.detail ||
+            `Request failed with status ${response.status}`
+        );
       }
-    };
+
+      const data: TravelPlanResponse = await response.json();
+
+      if (data.pending_approval) {
+        setPendingApproval(data.pending_approval);
+      }
+    } catch (error) {
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content:
+            error instanceof Error
+              ? `Sorry, I couldn't select that option: ${error.message}`
+              : "Sorry, I couldn't select that option.",
+        },
+      ]);
+
+      setSelectedRecommendation(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+ const approveRecommendation = async () => {
+    if (!pendingApproval) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/travel/approval",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            session_id: sessionId,
+            approval_id: pendingApproval.approval_id,
+            action: "approve",
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+
+        throw new Error(
+          errorData?.detail ||
+            `Request failed with status ${response.status}`
+        );
+      }
+
+      const data: { approval: TravelApproval } =
+        await response.json();
+
+      setPendingApproval(data.approval);
+
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content:
+            "Your selection has been approved. I can now proceed with the booking.",
+        },
+      ]);
+    } catch (error) {
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content:
+            error instanceof Error
+              ? `Sorry, I couldn't approve the selection: ${error.message}`
+              : "Sorry, I couldn't approve the selection.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const rejectRecommendation = async () => {
+    if (!pendingApproval) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/travel/approval",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            session_id: sessionId,
+            approval_id: pendingApproval.approval_id,
+            action: "reject",
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+
+        throw new Error(
+          errorData?.detail ||
+            `Request failed with status ${response.status}`
+        );
+      }
+
+      const data: { approval: TravelApproval } =
+        await response.json();
+
+      setPendingApproval(data.approval);
+
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content:
+            "Your selection was rejected. You can choose another travel option.",
+        },
+      ]);
+
+      setSelectedRecommendation(null);
+    } catch (error) {
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content:
+            error instanceof Error
+              ? `Sorry, I couldn't reject the selection: ${error.message}`
+              : "Sorry, I couldn't reject the selection.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const bookRecommendation = async () => {
+    if (
+      !pendingApproval ||
+      pendingApproval.status !== "approved"
+    ) {
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/travel/book",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            session_id: sessionId,
+            approval_id: pendingApproval.approval_id,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+
+        throw new Error(
+          errorData?.detail ||
+            `Request failed with status ${response.status}`
+        );
+      }
+
+      const data: { booking: BookingResult } =
+        await response.json();
+
+      setBooking(data.booking);
+
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content: `Booking confirmed! Your booking ID is ${data.booking.booking_id}.`,
+        },
+      ]);
+    } catch (error) {
+      setMessages((previous) => [
+        ...previous,
+        {
+          role: "assistant",
+          content:
+            error instanceof Error
+              ? `Sorry, I couldn't complete the booking: ${error.message}`
+              : "Sorry, I couldn't complete the booking.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const [recommendations, setRecommendations] = useState<
     Recommendation[] | null
@@ -447,7 +645,7 @@ export default function Home() {
             </div>
           </section>
         )}
-        {pendingApproval && selectedRecommendation && (
+        {pendingApproval && selectedRecommendation && !booking && (
           <section className="mt-8 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6">
             <h2 className="text-2xl font-bold">
               Review your selection
@@ -478,6 +676,84 @@ export default function Home() {
             <p className="mt-2 text-sm text-slate-400">
               Status: {pendingApproval.status}
             </p>
+
+            {pendingApproval.status === "pending" && (
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                <button
+                  onClick={approveRecommendation}
+                  disabled={loading}
+                  className="flex-1 rounded-xl bg-amber-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-slate-600"
+                >
+                  {loading ? "Processing..." : "Approve & Continue"}
+                </button>
+
+                <button
+                  onClick={rejectRecommendation}
+                  disabled={loading}
+                  className="flex-1 rounded-xl border border-red-500/50 bg-red-500/10 px-5 py-3 font-semibold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:bg-slate-700"
+                >
+                  {loading ? "Processing..." : "Reject"}
+                </button>
+              </div>
+            )}
+
+            {pendingApproval.status === "approved" && (
+              <button
+                onClick={bookRecommendation}
+                disabled={loading}
+                className="mt-5 w-full rounded-xl bg-green-600 px-5 py-3 font-semibold text-white transition hover:bg-green-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+              >
+                {loading ? "Booking..." : "Confirm Booking"}
+              </button>
+            )}
+          </section>
+        )}
+        {booking && (
+          <section className="mt-8 rounded-2xl border border-green-500/30 bg-green-500/10 p-6">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">✅</span>
+
+              <div>
+                <h2 className="text-2xl font-bold">
+                  Booking Confirmed
+                </h2>
+
+                <p className="text-slate-300">
+                  Your flight and hotel have been successfully booked.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 rounded-xl bg-slate-900 p-4">
+              <div>
+                <p className="text-sm text-slate-400">Booking ID</p>
+                <p className="font-semibold">{booking.booking_id}</p>
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-400">Flight</p>
+                <p className="font-semibold">{booking.selected_flight_id}</p>
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-400">Hotel</p>
+                <p className="font-semibold">{booking.selected_hotel_id}</p>
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-400">Total</p>
+                <p className="text-xl font-bold">
+                  {booking.currency} {booking.total_price.toFixed(2)}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-sm text-slate-400">Status</p>
+                <p className="font-semibold text-green-400">
+                  {booking.status}
+                </p>
+              </div>
+            </div>
           </section>
         )}
       </div>
