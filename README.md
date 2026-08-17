@@ -14,7 +14,8 @@ Planning a trip often involves juggling multiple constraints (dates, budget, loc
 - **Mock and Real Providers:** Supports seamless switching between mock data (for testing) and real travel APIs (like Duffel).
 
 ## High-Level Architecture
-```                 ┌─────────────────────┐
+```
+                    ┌─────────────────────┐
                     │   User / Browser    │
                     └──────────┬──────────┘
                                │
@@ -60,7 +61,8 @@ Planning a trip often involves juggling multiple constraints (dates, budget, loc
 ```
 
 ### How the AI Agent Workflow Works
-            ``` User Message
+```
+           User Message
                 │
                 ▼
             LLM extracts TravelConstraints
@@ -134,7 +136,7 @@ After approval, the frontend calls `/api/travel/book` with the `approval_id` and
 
 A detailed look at the important files and directories in this repository:
 
-```text
+```
 .
 ├── backend/
 │   ├── main.py                          # FastAPI app, API routes, dependency injection
@@ -190,7 +192,7 @@ USE_DUFFEL_HOTELS=true|false
 ## Exact Local Setup Instructions
 
 ### How to run the backend
-```bash
+```
 cd backend
 python3 -m venv venv
 source venv/bin/activate
@@ -199,7 +201,7 @@ uvicorn main:app --reload
 ```
 
 ### How to run the frontend
-```bash
+```
 cd frontend
 npm install
 npm run dev
@@ -214,7 +216,7 @@ npm run dev
 
 ## Testing Instructions and Current Test Status
 To run the backend tests:
-```bash
+```
 cd backend
 source venv/bin/activate
 pytest tests/
