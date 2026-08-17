@@ -6,6 +6,27 @@
 ## Project Objective / Problem Statement
 Planning a trip often involves juggling multiple constraints (dates, budget, locations) across different platforms. The objective of this project is to provide a unified, conversational interface where an AI agent handles the complex orchestration of extracting constraints, finding valid travel options, and managing the booking flow, reducing friction for the user.
 
+## Screenshots (Demo)
+### Main Screen
+
+<img width="1710" height="973" alt="Screenshot 2026-08-17 at 1 30 46 PM" src="https://github.com/user-attachments/assets/16cbb44d-98bd-4663-96e8-3fa8232db8cb" />
+
+### Chat and Recommendation
+
+<img width="1710" height="984" alt="Screenshot 2026-08-17 at 1 35 43 PM" src="https://github.com/user-attachments/assets/b93f64d1-4b63-4318-8160-8bfac75bc20e" />
+
+### Selection and Booking Approval
+
+<img width="1710" height="984" alt="Screenshot 2026-08-17 at 1 36 03 PM" src="https://github.com/user-attachments/assets/26e0ebc8-e5f5-471d-8270-bf6e3f9dd91c" />
+
+### Booking Confirmation
+
+<img width="1710" height="984" alt="Screenshot 2026-08-17 at 1 36 18 PM" src="https://github.com/user-attachments/assets/7c2713fc-b3c5-464a-927a-b2d9fad2838f" />
+
+### Confirmation Successful (Receipt and Summary)
+
+<img width="1710" height="984" alt="Screenshot 2026-08-17 at 1 36 40 PM" src="https://github.com/user-attachments/assets/af28b8ca-5609-49e2-8b2a-01030defbc60" />
+
 ## Key Features
 - **Natural Language Parsing:** Extracts travel constraints (origin, destination, dates, budget, etc.) from conversational text.
 - **Conversational Orchestration:** Uses an AI workflow to ask clarifying questions if essential constraints are missing.
@@ -15,90 +36,90 @@ Planning a trip often involves juggling multiple constraints (dates, budget, loc
 
 ## High-Level Architecture
 ```
-                    ┌─────────────────────┐
-                    │   User / Browser    │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │ Next.js Frontend    │
-                    │ Chat + Recommendations
-                    │ Approval + Booking  │
-                    └──────────┬──────────┘
-                               │ REST API
-                               ▼
-                    ┌─────────────────────┐
-                    │   FastAPI Backend   │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                 ┌──────────────────────────┐
-                 │ LangGraph Orchestrator   │
-                 └────────────┬─────────────┘
-                              │
-              ┌───────────────┼────────────────┐
-              ▼               ▼                ▼
-        ┌──────────┐   ┌────────────┐   ┌─────────────┐
-        │ Gemini   │   │ Validation │   │ Search      │
-        │ LLM      │   │ / State    │   │ Services    │
-        └──────────┘   └────────────┘   └──────┬──────┘
-                                               │
-                                  ┌────────────┴────────────┐
-                                  ▼                         ▼
-                           Flight Provider           Hotel Provider
-                           Mock / Duffel             Mock / Duffel
-                                  │                         │
-                                  └────────────┬────────────┘
-                                               ▼
-                                      Recommendations
-                                               │
-                                               ▼
-                                      Human Approval
-                                               │
-                                               ▼
-                                        Booking Service
-                                         Mock Provider
+                                  ┌─────────────────────┐
+                                  │   User / Browser    │
+                                  └──────────┬──────────┘
+                                             │
+                                             ▼
+                                  ┌─────────────────────┐
+                                  │ Next.js Frontend    │
+                                  │ Chat + Recommendations
+                                  │ Approval + Booking  │
+                                  └──────────┬──────────┘
+                                             │ REST API
+                                             ▼
+                                  ┌─────────────────────┐
+                                  │   FastAPI Backend   │
+                                  └──────────┬──────────┘
+                                             │
+                                             ▼
+                               ┌──────────────────────────┐
+                               │ LangGraph Orchestrator   │
+                               └────────────┬─────────────┘
+                                            │
+                            ┌───────────────┼────────────────┐
+                            ▼               ▼                ▼
+                      ┌──────────┐   ┌────────────┐   ┌─────────────┐
+                      │ Gemini   │   │ Validation │   │ Search      │
+                      │ LLM      │   │ / State    │   │ Services    │
+                      └──────────┘   └────────────┘   └──────┬──────┘
+                                                             │
+                                                ┌────────────┴────────────┐
+                                                ▼                         ▼
+                                         Flight Provider           Hotel Provider
+                                         Mock / Duffel             Mock / Duffel
+                                                │                         │
+                                                └────────────┬────────────┘
+                                                             ▼
+                                                    Recommendations
+                                                             │
+                                                             ▼
+                                                    Human Approval
+                                                             │
+                                                             ▼
+                                                      Booking Service
+                                                       Mock Provider
 ```
 
 ### How the AI Agent Workflow Works
 ```
-           User Message
-                │
-                ▼
-            LLM extracts TravelConstraints
-                │
-                ▼
-            Validate constraints
-                │
-                ├── Missing information ──► Ask clarification
-                │                              │
-                │                              └──► User responds
-                │
-                ▼
-            All required information present
-                │
-                ▼
-            Search flights + hotels
-                │
-                ▼
-            Generate recommendations
-                │
-                ▼
-            User selects option
-                │
-                ▼
-            Create pending approval
-                │
-                ├── Reject ──► Return to options
-                │
-                ▼
-            User approves
-                │
-                ▼
-            Booking service
-                │
-                ▼
-            Booking confirmation
+                                            User Message
+                                                 │
+                                                 ▼
+                                            LLM extracts TravelConstraints
+                                                 │
+                                                 ▼
+                                            Validate constraints
+                                                 │
+                                                 ├── Missing information ──► Ask clarification
+                                                 │                              │
+                                                 │                              └──► User responds
+                                                 │
+                                                 ▼
+                                            All required information present
+                                                 │
+                                                 ▼
+                                            Search flights + hotels
+                                                 │
+                                                 ▼
+                                            Generate recommendations
+                                                 │
+                                                 ▼
+                                            User selects option
+                                                 │
+                                                 ▼
+                                            Create pending approval
+                                                 │
+                                                 ├── Reject ──► Return to options
+                                                 │
+                                                 ▼
+                                            User approves
+                                                 │
+                                                 ▼
+                                            Booking service
+                                                 │
+                                                 ▼
+                                            Booking confirmation
  ```           
 1. **Extraction:** The user provides a natural language prompt. The LLM extracts structured `TravelConstraints`.
 2. **Validation:** The system checks if all required fields are present. If not, the LLM generates a clarifying question.
