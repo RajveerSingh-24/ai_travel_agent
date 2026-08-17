@@ -14,7 +14,7 @@ Planning a trip often involves juggling multiple constraints (dates, budget, loc
 - **Mock and Real Providers:** Supports seamless switching between mock data (for testing) and real travel APIs (like Duffel).
 
 ## High-Level Architecture
-```                    ┌─────────────────────┐
+```                 ┌─────────────────────┐
                     │   User / Browser    │
                     └──────────┬──────────┘
                                │
