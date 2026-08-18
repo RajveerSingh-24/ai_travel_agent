@@ -2,6 +2,7 @@
 
 import { useState, useEffect, MouseEvent } from "react";
 
+
 export type TripSession = {
   id: string;
   title: string;
@@ -18,7 +19,7 @@ import ChatPanel from "../components/chat/ChatPanel";
 import RecommendationPanel from "../components/travel/RecommendationPanel";
 import ApprovalPanel from "../components/booking/ApprovalPanel";
 import BookingConfirmation from "../components/booking/BookingConfirmation";
-
+import Image from "next/image";
 import type {
   Message,
   Recommendation,
@@ -496,22 +497,15 @@ export default function Home() {
         {/* Application header */}
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-card/85 backdrop-blur-md px-6 sticky top-0 z-50 transition-all duration-200">
           <div className="flex items-center gap-3.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold text-xs border border-border shadow-sm shadow-primary/10">
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="rotate-45"
-              >
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
-            </div>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center">
+                <Image
+                  src="/TRAVEL.png"
+                  alt="AI Travel Agent"
+                  width={36}
+                  height={36}
+                  priority
+                />
+              </div>
 
             <div>
               <div className="flex items-center gap-2">
