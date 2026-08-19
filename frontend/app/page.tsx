@@ -651,7 +651,7 @@ export default function Home() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-foreground leading-none">
-                    Guest Planner
+                    Rajveer Singh
                   </p>
                   <p className="text-[10px] text-muted-foreground mt-1 leading-none">
                     Session Active
