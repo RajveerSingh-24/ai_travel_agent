@@ -25,7 +25,7 @@ Planning a trip often involves juggling multiple constraints (dates, budget, loc
 
 ### Confirmation Successful (Receipt and Summary)
 
-<img width="1710" height="984" alt="Screenshot 2026-08-17 at 1 36 40 PM" src="https://github.com/user-attachments/assets/af28b8ca-5609-49e2-8b2a-01030defbc60" />
+<img width="1710" height="979" alt="Screenshot 2026-08-20 at 11 30 01 PM" src="https://github.com/user-attachments/assets/7f5220ab-8699-4bf2-bb2e-868779593289" />
 
 ## Key Features
 - **Natural Language Parsing:** Extracts travel constraints (origin, destination, dates, budget, etc.) from conversational text.
