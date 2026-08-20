@@ -9,7 +9,7 @@ Planning a trip often involves juggling multiple constraints (dates, budget, loc
 ## Screenshots (Demo)
 ### Main Screen
 
-<img width="1710" height="973" alt="Screenshot 2026-08-17 at 1 30 46 PM" src="https://github.com/user-attachments/assets/16cbb44d-98bd-4663-96e8-3fa8232db8cb" />
+<img width="1710" height="979" alt="Screenshot 2026-08-20 at 11 26 36 PM" src="https://github.com/user-attachments/assets/666a8415-1af8-413b-9d44-f0786deb27ce" />
 
 ### Chat and Recommendation
 
