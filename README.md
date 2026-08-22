@@ -158,7 +158,7 @@ After approval, the frontend calls `/api/travel/book` with the `approval_id` and
 A detailed look at the important files and directories in this repository:
 
 ```
-.
+ai_travel_agent
 ├── backend/
 │   ├── main.py                          # FastAPI app, API routes, dependency injection
 │   ├── schemas/
