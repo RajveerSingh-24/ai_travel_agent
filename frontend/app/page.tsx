@@ -682,7 +682,7 @@ export default function Home() {
           {/* Main workspace */}
           <div className="min-h-0 flex-1 flex flex-col h-full bg-background relative">
             {isBookingHistoryOpen ? (
-              <BookingHistoryView sessions={sessions} />
+              <BookingHistoryView sessions={sessions} onSelectSession={loadSession} />
             ) : !hasWorkspace ? (
               /*
                * Initial state:

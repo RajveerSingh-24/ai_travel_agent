@@ -5,26 +5,42 @@ import type { TripSession } from "../../app/page";
 
 interface BookingHistoryViewProps {
   sessions: TripSession[];
+  onSelectSession?: (session: TripSession) => void;
 }
 
-export default function BookingHistoryView({ sessions }: BookingHistoryViewProps) {
+export default function BookingHistoryView({ sessions, onSelectSession }: BookingHistoryViewProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"successful" | "cancelled">("successful");
 
   const bookedSessions = sessions.filter(
-    (s) => s.booking && s.booking.status === "confirmed" && s.selectedRecommendation
+    (s) => s.booking && 
+           s.booking.status === (filter === "successful" ? "confirmed" : "cancelled") && 
+           s.selectedRecommendation
   );
 
   return (
     <div className="flex-1 h-full flex flex-col bg-background animate-in fade-in duration-300">
-      <div className="flex items-center justify-between p-6 border-b border-border bg-card/50">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground tracking-tight">
-            My Bookings
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            View and manage your past confirmed travel bookings
-          </p>
-        </div>
+      <div className="flex items-center justify-center p-6 border-b border-border bg-card/50 gap-6">
+        <button
+          onClick={() => setFilter("successful")}
+          className={`px-6 py-2 text-sm font-semibold rounded-full transition-all duration-200 border ${
+            filter === "successful" 
+              ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30 dark:text-emerald-400 shadow-sm" 
+              : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          }`}
+        >
+          Successful Bookings
+        </button>
+        <button
+          onClick={() => setFilter("cancelled")}
+          className={`px-6 py-2 text-sm font-semibold rounded-full transition-all duration-200 border ${
+            filter === "cancelled" 
+              ? "bg-red-500/10 text-red-600 border-red-500/30 dark:text-red-400 shadow-sm" 
+              : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+          }`}
+        >
+          Cancelled Bookings
+        </button>
       </div>
       
       <div className="flex-1 overflow-y-auto p-6">
@@ -32,10 +48,22 @@ export default function BookingHistoryView({ sessions }: BookingHistoryViewProps
           {bookedSessions.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-center text-muted-foreground bg-muted/20 rounded-xl border border-dashed border-border">
               <svg className="w-16 h-16 mb-4 opacity-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+                {filter === "successful" ? (
+                  <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+                ) : (
+                  <circle cx="12" cy="12" r="10" />
+                )}
+                {filter === "cancelled" && <line x1="15" y1="9" x2="9" y2="15" />}
+                {filter === "cancelled" && <line x1="9" y1="9" x2="15" y2="15" />}
               </svg>
-              <p className="text-lg font-medium text-foreground">No bookings found</p>
-              <p className="text-sm mt-1">Your confirmed bookings will appear here.</p>
+              <p className="text-lg font-medium text-foreground">
+                No {filter} bookings found
+              </p>
+              <p className="text-sm mt-1">
+                {filter === "successful" 
+                  ? "Your confirmed bookings will appear here." 
+                  : "You don't have any cancelled bookings."}
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -82,12 +110,30 @@ export default function BookingHistoryView({ sessions }: BookingHistoryViewProps
                         </div>
                       </div>
                       <div className="flex items-center gap-6">
+                        {onSelectSession && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectSession(session);
+                            }}
+                            className="p-2 rounded-full hover:bg-muted-foreground/10 text-muted-foreground hover:text-emerald-500 transition-colors"
+                            title="Go to chat"
+                          >
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                            </svg>
+                          </button>
+                        )}
                         <div className="text-right">
                           <p className="text-lg font-bold text-foreground">
                             {booking.currency} {booking.total_price.toLocaleString()}
                           </p>
-                          <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 mt-1">
-                            Confirmed
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium mt-1 ${
+                            filter === "successful" 
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" 
+                              : "bg-red-500/10 text-red-600 dark:text-red-400"
+                          }`}>
+                            {filter === "successful" ? "Confirmed" : "Cancelled"}
                           </span>
                         </div>
                         <div className={`text-muted-foreground transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}>
