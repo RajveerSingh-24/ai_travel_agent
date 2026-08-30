@@ -242,8 +242,7 @@ cd backend
 source venv/bin/activate
 pytest tests/
 ```
-**Current Status:** 140 tests collected. 137 tests pass, 3 tests fail (mostly related to provider mapping and booking endpoint repeat logic).
-
+**Current Status:** 140 tests collected. 140 tests pass.
 ## Future Improvements
 - **Persistent Storage:** Replace in-memory dictionaries with a database (e.g., PostgreSQL, Redis) for session and LangGraph state management.
 - **Full Real Booking:** Implement Duffel booking APIs instead of the mock provider.
