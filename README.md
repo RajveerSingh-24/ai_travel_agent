@@ -246,7 +246,6 @@ pytest tests/
 ## Future Improvements
 - **Persistent Storage:** Replace in-memory dictionaries with a database (e.g., PostgreSQL, Redis) for session and LangGraph state management.
 - **Full Real Booking:** Implement Duffel booking APIs instead of the mock provider.
-- **Test Fixes:** Resolve the 3 failing tests to ensure 100% pass rate.
 - **Payment Integration:** Integrate Payment using Stripe/Razorpay
 - **User Authentication:** Add user accounts to track trips and preferences across sessions.
 
